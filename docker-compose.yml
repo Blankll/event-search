@@ -10,6 +10,7 @@ services:
       - node.name=event-es-7-node
       - discovery.type=single-node
       - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
     volumes:
       - es-data-7:/usr/share/elasticsearch/data
   event-es-kibana-7:
@@ -31,6 +32,7 @@ services:
       - node.name=event-es-8-node
       - discovery.type=single-node
       - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
     volumes:
       - es-data-8:/usr/share/elasticsearch/data
   event-es-kibana-8:
@@ -50,6 +52,7 @@ services:
       - node.name=event-os-node
       - discovery.type=single-node
       - plugins.security.disabled=true
+      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
     volumes:
       - os-data:/usr/share/elasticsearch/data
   event-os-dashboards:
