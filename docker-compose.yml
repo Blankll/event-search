@@ -1,0 +1,69 @@
+version: "3.9"
+services:
+  event-es-7:
+    image: elasticsearch:7.17.10
+    container_name: event-es-7
+    ports:
+      - 9200:9200
+    environment:
+      - cluster.name=event-es-7-cluster
+      - node.name=event-es-7-node
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    volumes:
+      - es-data-7:/usr/share/elasticsearch/data
+  event-es-kibana-7:
+    image: kibana:7.17.10
+    container_name: event-es-kibana-7
+    ports:
+      - 5601:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://event-es-7:9200
+    depends_on:
+      - event-es-7
+  event-es-8:
+    image: elasticsearch:8.8.1
+    container_name: event-es-8
+    ports:
+      - 9201:9200
+    environment:
+      - cluster.name=event-es-8-cluster
+      - node.name=event-es-8-node
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    volumes:
+      - es-data-8:/usr/share/elasticsearch/data
+  event-es-kibana-8:
+    image: kibana:8.8.1
+    container_name: event-es-kibana-8
+    ports:
+      - 5602:5601
+    depends_on:
+      - event-es-8
+  event-os:
+    image: opensearchproject/opensearch:2.8.0
+    container_name: event-os
+    ports:
+      - 9202:9200
+    environment:
+      - cluster.name=event-os-cluster
+      - node.name=event-os-node
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+    volumes:
+      - os-data:/usr/share/elasticsearch/data
+  event-os-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.8.0
+    container_name: event-os-dashboards
+    ports:
+      - 5603:5601
+    environment:
+      - OPENSEARCH_HOSTS=http://event-os:9200
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    depends_on:
+      - event-os
+
+volumes:
+  es-data-7:
+  es-data-8:
+  os-data:
