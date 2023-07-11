@@ -10,14 +10,13 @@ describe('integration test for elasticsearch', () => {
     await saveBook(mockBook);
   });
   it('should get book when search with valid book name', async () => {
-    const books = await searchBook('jest elasticsearch');
-    expect(books).toHaveLength(1);
-    expect(books[0]).toMatchObject({
+    const bookHits = await searchBook('jest elasticsearch');
+
+    expect(bookHits).toMatchObject({
       total: { value: 1, relation: 'eq' },
       hits: [
         {
           _index: 'books',
-          _id: '1',
           _source: {
             name: 'jest elasticsearch',
             author: 'jest',
