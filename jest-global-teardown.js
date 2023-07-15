@@ -1,6 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const esTeardown = require('@shelf/jest-elasticsearch/lib/teardown.js');
-
+const { globalTeardown } = require('@geek-fun/jest-search');
 module.exports = async () => {
-  await Promise.all([esTeardown()]);
+  await Promise.all([globalTeardown()]);
 };

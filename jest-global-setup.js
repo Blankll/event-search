@@ -1,6 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const esSetup = require('@shelf/jest-elasticsearch/lib/setup.js');
-
+const { globalSetup } = require('@geek-fun/jest-search');
 module.exports = async () => {
-  await Promise.all([esSetup()]);
+  await Promise.all([globalSetup()]);
 };

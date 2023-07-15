@@ -65,8 +65,31 @@ services:
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
     depends_on:
       - event-os
+  event-es-6:
+    image: elasticsearch:6.8.23
+    container_name: event-es-6
+    ports:
+      - 9203:9200
+    environment:
+      - cluster.name=event-es-6-cluster
+      - node.name=event-es-6-node
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
+    volumes:
+      - es-data-6:/usr/share/elasticsearch/data
+  event-es-kibana-6:
+    image: kibana:6.8.23
+    container_name: event-es-kibana-6
+    ports:
+      - 5604:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://event-es-6:9200
+    depends_on:
+      - event-es-6
 
 volumes:
   es-data-7:
   es-data-8:
   os-data:
+  es-data-6:

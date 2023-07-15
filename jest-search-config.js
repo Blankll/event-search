@@ -1,10 +1,10 @@
 module.exports = () => {
   return {
-    esVersion: '8.4.0', // ! must be exact version. Ref: https://github.com/elastic/elasticsearch-js .
-    // don't be shy to fork our code and update deps to correct.
-    clusterName: 'event-es-8-cluster',
-    nodeName: 'event-es-8-node',
+    engine: 'elasticsearch',
+    version: '8.8.2',
     port: 9201,
+    clusterName: 'jest-search-local',
+    nodeName: 'jest-search-local',
     indexes: [
       {
         name: 'books',

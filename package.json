@@ -9,7 +9,7 @@
     "build": "tsc --build",
     "lint:fix": "eslint --fix ./",
     "lint:check": "eslint ./",
-    "test": "jest --runInBand --coverage --coverageReporters json-summary text html lcov"
+    "test": "DEBUG=jest-search jest --runInBand --detectOpenHandles --coverage --coverageReporters json-summary text html lcov"
   },
   "author": "",
   "license": "ISC",
@@ -20,7 +20,7 @@
     "express": "^4.17.2"
   },
   "devDependencies": {
-    "@shelf/jest-elasticsearch": "^5.1.0",
+    "@geek-fun/jest-search": "^0.0.9",
     "@types/cors": "^2.8.12",
     "@types/express": "^4.17.13",
     "@types/jest": "^29.5.2",
