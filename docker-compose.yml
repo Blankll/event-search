@@ -87,6 +87,14 @@ services:
       - ELASTICSEARCH_HOSTS=http://event-es-6:9200
     depends_on:
       - event-es-6
+  zincsearch:
+    image: public.ecr.aws/zinclabs/zincsearch:0.4.7
+    container_name: zincsearch
+    ports:
+      - 4080:4080
+    environment:
+      ZINC_FIRST_ADMIN_USER: admin
+      ZINC_FIRST_ADMIN_PASSWORD: Complexpass#123
 
 volumes:
   es-data-7:
