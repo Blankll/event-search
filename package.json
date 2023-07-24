@@ -20,7 +20,7 @@
     "express": "^4.17.2"
   },
   "devDependencies": {
-    "@geek-fun/jest-search": "^1.0.0",
+    "@geek-fun/jest-search": "^1.0.2",
     "@types/cors": "^2.8.12",
     "@types/express": "^4.17.13",
     "@types/jest": "^29.5.2",
