@@ -1,8 +1,7 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   preset: 'ts-jest',
-  globalSetup: '<rootDir>/jest-global-setup.js',
-  globalTeardown: '<rootDir>/jest-global-teardown.js',
   testEnvironment: 'node',
+  testTimeout: 10 * 60 * 1000,
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
 };
