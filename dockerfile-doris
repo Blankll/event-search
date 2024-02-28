@@ -1,0 +1,28 @@
+FROM apache/incubator-doris:build-env-latest
+
+USER root
+WORKDIR /root
+RUN echo '123456' | passwd root --stdin
+
+RUN yum install -y vim net-tools man wget git mysql lsof bash-completion \
+        && cp /var/local/thirdparty/installed/bin/thrift /usr/bin
+
+# safer usage, create new user instead of using root
+RUN yum install -y sudo \
+        && useradd -ms /bin/bash doris-user && echo 1234567 | passwd doris-user --stdin \
+        && usermod -a -G wheel doris-user
+
+USER doris-user
+WORKDIR /home/doris-user
+RUN git config --global color.ui true \
+        && git config --global user.email "zilisheng1996@gmail.com" \
+        && git config --global user.name "Blankll" \
+# build doris
+RUN mkdir code && cd code
+RUN git clone https://github.com/apache/doris.git
+RUN cd doris && git submodule update --init --recursive
+RUN ./build.sh
+RUN cd ../ && mkdir meta_dir
+
+RUN sh output/fe/bin/start_fe.sh --daemon && sh bin/start_be.sh
+
