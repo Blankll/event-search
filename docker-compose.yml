@@ -95,10 +95,10 @@ services:
     environment:
       ZINC_FIRST_ADMIN_USER: admin
       ZINC_FIRST_ADMIN_PASSWORD: Complexpass#123
-  # doris:
-  #   build:
-  #     context: .
-  #     dockerfile: ./dockerfile-doris
+  doris:
+    build:
+       context: .
+       dockerfile: ./dockerfile-doris
   kafka:
     image: 'bitnami/kafka:latest'
     ports:
@@ -126,6 +126,7 @@ services:
       - 9099:8080
     depends_on:
       - kafka
+
 volumes:
   es-data-7:
   es-data-8:
