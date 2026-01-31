@@ -1,0 +1,137 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template for DynamoDB
+
+Parameters:
+  TableName:
+    Description: Name of the DynamoDB Table
+    Type: String
+    Default: event-search-dynamodb
+
+
+Resources:
+  DynamoDBTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: class
+          AttributeType: S
+        - AttributeName: user_name
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: phone_number
+          AttributeType: S
+        - AttributeName: home_address
+          AttributeType: S
+        - AttributeName: school_card_id
+          AttributeType: S
+        - AttributeName: birthday
+          AttributeType: S
+        - AttributeName: english
+          AttributeType: N
+        - AttributeName: math
+          AttributeType: N
+        - AttributeName: physics
+          AttributeType: N
+        - AttributeName: biology
+          AttributeType: N
+        - AttributeName: chemistry
+          AttributeType: N
+        - AttributeName: arts
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: class
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: gsi_user_name
+          KeySchema:
+            - AttributeName: user_name
+              KeyType: HASH
+            - AttributeName: class
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi_email
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi_school_card_id
+          KeySchema:
+            - AttributeName: school_card_id
+              KeyType: HASH
+            - AttributeName: user_name
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi_phone_number
+          KeySchema:
+            - AttributeName: phone_number
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi_home_address_birthday_sort
+          KeySchema:
+            - AttributeName: home_address
+              KeyType: HASH
+            - AttributeName: birthday
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi_id_math_sort
+          KeySchema:
+            - AttributeName: id
+              KeyType: HASH
+            - AttributeName: math
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi_id_english_sort
+          KeySchema:
+            - AttributeName: id
+              KeyType: HASH
+            - AttributeName: english
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi_id_physics_sort
+          KeySchema:
+            - AttributeName: id
+              KeyType: HASH
+            - AttributeName: physics
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      LocalSecondaryIndexes:
+        - IndexName: lsi_biology_sort
+          KeySchema:
+            - AttributeName: id
+              KeyType: HASH
+            - AttributeName: biology
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: lsi_chemistry_sort
+          KeySchema:
+            - AttributeName: id
+              KeyType: HASH
+            - AttributeName: chemistry
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: lsi_arts_sort
+          KeySchema:
+            - AttributeName: id
+              KeyType: HASH
+            - AttributeName: arts
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL

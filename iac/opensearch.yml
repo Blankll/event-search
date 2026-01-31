@@ -22,7 +22,7 @@ Resources:
     Type: 'AWS::OpenSearchService::Domain'
     Properties:
       DomainName: !Ref OSDomainName
-      EngineVersion: 'OpenSearch_2.11'
+      EngineVersion: 'OpenSearch_2.17'
       ClusterConfig:
         InstanceType: t3.small.search
         InstanceCount: 1
