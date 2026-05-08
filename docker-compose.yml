@@ -104,6 +104,19 @@ services:
       - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
     volumes:
       - os-data:/usr/share/elasticsearch/data
+  event-easysearch:
+    image: infinilabs/easysearch:2.1.2-2696
+    container_name: event-easysearch
+    ports:
+      - 9205:9200
+    environment:
+      - cluster.name=event-easysearch-cluster
+      - node.name=event-easysearch-node
+      - discovery.type=single-node
+      - security.disabled=true
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    volumes:
+      - easysearch-data:/app/easysearch/data
   event-os-dashboards:
     image: opensearchproject/opensearch-dashboards:2.8.0
     container_name: event-os-dashboards
@@ -157,6 +170,7 @@ volumes:
   es-data-7:
   es-data-6:
   os-data:
+  easysearch-data:
   kafka-data:
   dynamodb-data:
 
