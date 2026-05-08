@@ -3,3 +3,15 @@
 /dist/
 /coverage/
 /.vscode/
+
+# Environment files with secrets
+.env
+.env.*
+
+# Security certificates and keys
+*.pem
+*.key
+*.csr
+
+# OpenSearch security config (generated at runtime)
+opensearch-security-config/internal_users.yml

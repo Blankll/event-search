@@ -1,0 +1,684 @@
+name: opensearch-cluster-production
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: os-minio
+    ports:
+      - 9000:9000
+      - 9001:9001
+    environment:
+      MINIO_ROOT_USER: opensearch
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio-setup:
+    image: minio/mc:latest
+    container_name: os-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 opensearch ${MINIO_ROOT_PASSWORD};
+      mc mb myminio/opensearch-segments;
+      mc mb myminio/opensearch-translog;
+      mc mb myminio/opensearch-state;
+      echo 'MinIO buckets created successfully';
+      "
+
+  security-setup:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-security-setup
+    user: "0"
+    depends_on:
+      minio-setup:
+        condition: service_completed_successfully
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - ./opensearch-security-config:/usr/share/opensearch/config/opensearch-security
+    environment:
+      - OPENSEARCH_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD}
+      - OPENSEARCH_KIBANA_PASSWORD=${OPENSEARCH_KIBANA_PASSWORD}
+    command: >
+      bash -c '
+        if [ x${OPENSEARCH_ADMIN_PASSWORD} == x ]; then
+          echo "Set the OPENSEARCH_ADMIN_PASSWORD environment variable in the .env file";
+          exit 1;
+        elif [ x${OPENSEARCH_KIBANA_PASSWORD} == x ]; then
+          echo "Set the OPENSEARCH_KIBANA_PASSWORD environment variable in the .env file";
+          exit 1;
+        fi;
+
+        echo "Generating certificates...";
+        mkdir -p /usr/share/opensearch/config/certs;
+
+        openssl genrsa -out /usr/share/opensearch/config/certs/ca.key 4096;
+        openssl req -new -x509 -key /usr/share/opensearch/config/certs/ca.key -out /usr/share/opensearch/config/certs/ca.pem -days 3650 -subj "/CN=OS-CA";
+
+        for node in cm-1 cm-2 cm-3 data-1 data-2 data-3 search-1 search-2 coord-1 coord-2; do
+          openssl genrsa -out /usr/share/opensearch/config/certs/${node}.key 2048;
+          openssl req -new -key /usr/share/opensearch/config/certs/${node}.key -out /usr/share/opensearch/config/certs/${node}.csr -subj "/CN=${node}";
+          openssl x509 -req -in /usr/share/opensearch/config/certs/${node}.csr -CA /usr/share/opensearch/config/certs/ca.pem -CAkey /usr/share/opensearch/config/certs/ca.key -CAcreateserial -out /usr/share/opensearch/config/certs/${node}.pem -days 3650;
+          cat /usr/share/opensearch/config/certs/${node}.key /usr/share/opensearch/config/certs/${node}.pem > /usr/share/opensearch/config/certs/${node}-all.pem;
+        done;
+
+        openssl genrsa -out /usr/share/opensearch/config/certs/admin.key 2048;
+        openssl req -new -key /usr/share/opensearch/config/certs/admin.key -out /usr/share/opensearch/config/certs/admin.csr -subj "/CN=admin";
+        openssl x509 -req -in /usr/share/opensearch/config/certs/admin.csr -CA /usr/share/opensearch/config/certs/ca.pem -CAkey /usr/share/opensearch/config/certs/ca.key -CAcreateserial -out /usr/share/opensearch/config/certs/admin.pem -days 3650;
+        cat /usr/share/opensearch/config/certs/admin.key /usr/share/opensearch/config/certs/admin.pem > /usr/share/opensearch/config/certs/admin-all.pem;
+
+        ADMIN_HASH=$(./plugins/opensearch-security/tools/hash.sh -p ${OPENSEARCH_ADMIN_PASSWORD} | tail -n 1);
+        KIBANA_HASH=$(./plugins/opensearch-security/tools/hash.sh -p ${OPENSEARCH_KIBANA_PASSWORD} | tail -n 1);
+
+        echo "---" > /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "_meta:" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  type: internalusers" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  config_version: 2" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "admin:" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  hash: ${ADMIN_HASH}" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  reserved: true" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  backend_roles:" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "    - admin" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  description: Admin user for OpenSearch cluster" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "kibanaserver:" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  hash: ${KIBANA_HASH}" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  reserved: true" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+        echo "  description: OpenSearch Dashboards server user" >> /usr/share/opensearch/config/opensearch-security/internal_users.yml;
+
+        chmod 600 /usr/share/opensearch/config/certs/*.key;
+        chmod 644 /usr/share/opensearch/config/certs/*.pem;
+
+        echo "Certificates and security config generated successfully";
+      '
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /usr/share/opensearch/config/certs/cm-1.pem ]"]
+      interval: 1s
+      timeout: 5s
+      retries: 120
+
+  cm-1:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-cm-1
+    depends_on:
+      security-setup:
+        condition: service_healthy
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - cm-data-1:/usr/share/opensearch/data
+    environment:
+      - node.name=cm-1
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=cluster_manager
+      - cluster.initial_cluster_manager_nodes=cm-1,cm-2,cm-3
+      - discovery.seed_hosts=cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/cm-1-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/cm-1.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/cm-1-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/cm-1.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx256m"
+    mem_limit: 512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  cm-2:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-cm-2
+    depends_on:
+      cm-1:
+        condition: service_healthy
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - cm-data-2:/usr/share/opensearch/data
+    environment:
+      - node.name=cm-2
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=cluster_manager
+      - cluster.initial_cluster_manager_nodes=cm-1,cm-2,cm-3
+      - discovery.seed_hosts=cm-1,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/cm-2-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/cm-2.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/cm-2-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/cm-2.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx256m"
+    mem_limit: 512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  cm-3:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-cm-3
+    depends_on:
+      cm-2:
+        condition: service_healthy
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - cm-data-3:/usr/share/opensearch/data
+    environment:
+      - node.name=cm-3
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=cluster_manager
+      - cluster.initial_cluster_manager_nodes=cm-1,cm-2,cm-3
+      - discovery.seed_hosts=cm-1,cm-2
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/cm-3-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/cm-3.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/cm-3-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/cm-3.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx256m"
+    mem_limit: 512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  security-admin-init:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-security-admin-init
+    depends_on:
+      cm-1:
+        condition: service_healthy
+      cm-2:
+        condition: service_healthy
+      cm-3:
+        condition: service_healthy
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - ./opensearch-security-config:/usr/share/opensearch/config/opensearch-security
+    command: >
+      bash -c '
+        echo "Waiting for cluster to be ready...";
+        until curl -s -k https://cm-1:9200/_cluster/health | grep -q "green"; do sleep 5; done;
+        echo "Initializing security configuration...";
+        ./plugins/opensearch-security/tools/securityadmin.sh -cd /usr/share/opensearch/config/opensearch-security -icl -nhnv -cacert /usr/share/opensearch/config/certs/ca.pem -cert /usr/share/opensearch/config/certs/admin.pem -key /usr/share/opensearch/config/certs/admin.key -h cm-1;
+        echo "Security configuration initialized successfully";
+      '
+
+  data-1:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-data-1
+    depends_on:
+      security-admin-init:
+        condition: service_completed_successfully
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - data-data-1:/usr/share/opensearch/data
+    environment:
+      - node.name=data-1
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=cm-1,cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/data-1-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/data-1.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/data-1-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/data-1.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - cluster.remote_store.state.enabled=true
+      - node.attr.remote_store.segment.repository=myminio
+      - node.attr.remote_store.translog.repository=myminio
+      - node.attr.remote_store.state.repository=myminio
+      - opensearch.remote_store.segment.repository.myminio.type=s3
+      - opensearch.remote_store.segment.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.segment.repository.myminio.bucket=opensearch-segments
+      - opensearch.remote_store.segment.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.segment.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.translog.repository.myminio.type=s3
+      - opensearch.remote_store.translog.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.translog.repository.myminio.bucket=opensearch-translog
+      - opensearch.remote_store.translog.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.translog.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.state.repository.myminio.type=s3
+      - opensearch.remote_store.state.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.state.repository.myminio.bucket=opensearch-state
+      - opensearch.remote_store.state.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.state.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - "OPENSEARCH_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  data-2:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-data-2
+    depends_on:
+      - data-1
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - data-data-2:/usr/share/opensearch/data
+    environment:
+      - node.name=data-2
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=cm-1,cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/data-2-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/data-2.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/data-2-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/data-2.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - cluster.remote_store.state.enabled=true
+      - node.attr.remote_store.segment.repository=myminio
+      - node.attr.remote_store.translog.repository=myminio
+      - node.attr.remote_store.state.repository=myminio
+      - opensearch.remote_store.segment.repository.myminio.type=s3
+      - opensearch.remote_store.segment.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.segment.repository.myminio.bucket=opensearch-segments
+      - opensearch.remote_store.segment.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.segment.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.translog.repository.myminio.type=s3
+      - opensearch.remote_store.translog.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.translog.repository.myminio.bucket=opensearch-translog
+      - opensearch.remote_store.translog.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.translog.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.state.repository.myminio.type=s3
+      - opensearch.remote_store.state.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.state.repository.myminio.bucket=opensearch-state
+      - opensearch.remote_store.state.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.state.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - "OPENSEARCH_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  data-3:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-data-3
+    depends_on:
+      - data-2
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - data-data-3:/usr/share/opensearch/data
+    environment:
+      - node.name=data-3
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=cm-1,cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/data-3-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/data-3.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/data-3-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/data-3.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - cluster.remote_store.state.enabled=true
+      - node.attr.remote_store.segment.repository=myminio
+      - node.attr.remote_store.translog.repository=myminio
+      - node.attr.remote_store.state.repository=myminio
+      - opensearch.remote_store.segment.repository.myminio.type=s3
+      - opensearch.remote_store.segment.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.segment.repository.myminio.bucket=opensearch-segments
+      - opensearch.remote_store.segment.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.segment.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.translog.repository.myminio.type=s3
+      - opensearch.remote_store.translog.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.translog.repository.myminio.bucket=opensearch-translog
+      - opensearch.remote_store.translog.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.translog.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.state.repository.myminio.type=s3
+      - opensearch.remote_store.state.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.state.repository.myminio.bucket=opensearch-state
+      - opensearch.remote_store.state.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.state.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - "OPENSEARCH_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  search-1:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-search-1
+    depends_on:
+      data-1:
+        condition: service_healthy
+      data-2:
+        condition: service_healthy
+      data-3:
+        condition: service_healthy
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - search-data-1:/usr/share/opensearch/data
+    environment:
+      - node.name=search-1
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=search
+      - discovery.seed_hosts=cm-1,cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/search-1-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/search-1.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/search-1-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/search-1.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - cluster.remote_store.state.enabled=true
+      - node.attr.remote_store.segment.repository=myminio
+      - node.attr.remote_store.translog.repository=myminio
+      - node.attr.remote_store.state.repository=myminio
+      - opensearch.remote_store.segment.repository.myminio.type=s3
+      - opensearch.remote_store.segment.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.segment.repository.myminio.bucket=opensearch-segments
+      - opensearch.remote_store.segment.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.segment.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.translog.repository.myminio.type=s3
+      - opensearch.remote_store.translog.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.translog.repository.myminio.bucket=opensearch-translog
+      - opensearch.remote_store.translog.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.translog.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.state.repository.myminio.type=s3
+      - opensearch.remote_store.state.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.state.repository.myminio.bucket=opensearch-state
+      - opensearch.remote_store.state.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.state.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 768m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  search-2:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-search-2
+    depends_on:
+      - search-1
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - search-data-2:/usr/share/opensearch/data
+    environment:
+      - node.name=search-2
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=search
+      - discovery.seed_hosts=cm-1,cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/search-2-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/search-2.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/search-2-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/search-2.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - cluster.remote_store.state.enabled=true
+      - node.attr.remote_store.segment.repository=myminio
+      - node.attr.remote_store.translog.repository=myminio
+      - node.attr.remote_store.state.repository=myminio
+      - opensearch.remote_store.segment.repository.myminio.type=s3
+      - opensearch.remote_store.segment.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.segment.repository.myminio.bucket=opensearch-segments
+      - opensearch.remote_store.segment.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.segment.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.translog.repository.myminio.type=s3
+      - opensearch.remote_store.translog.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.translog.repository.myminio.bucket=opensearch-translog
+      - opensearch.remote_store.translog.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.translog.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - opensearch.remote_store.state.repository.myminio.type=s3
+      - opensearch.remote_store.state.repository.myminio.endpoint=http://minio:9000
+      - opensearch.remote_store.state.repository.myminio.bucket=opensearch-state
+      - opensearch.remote_store.state.repository.myminio.aws.access_key=opensearch
+      - opensearch.remote_store.state.repository.myminio.aws.secret_key=${MINIO_ROOT_PASSWORD}
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 768m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  coord-1:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-coord-1
+    depends_on:
+      search-1:
+        condition: service_healthy
+      search-2:
+        condition: service_healthy
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - coord-data-1:/usr/share/opensearch/data
+    ports:
+      - ${OPENSEARCH_PORT_PROD_1}:9200
+    environment:
+      - node.name=coord-1
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=
+      - discovery.seed_hosts=cm-1,cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/coord-1-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/coord-1.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/coord-1-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/coord-1.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 768m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  coord-2:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: os-coord-2
+    depends_on:
+      - coord-1
+    volumes:
+      - os-certs:/usr/share/opensearch/config/certs
+      - coord-data-2:/usr/share/opensearch/data
+    ports:
+      - ${OPENSEARCH_PORT_PROD_2}:9200
+    environment:
+      - node.name=coord-2
+      - cluster.name=${OPENSEARCH_CLUSTER_NAME_PROD}
+      - node.roles=
+      - discovery.seed_hosts=cm-1,cm-2,cm-3
+      - network.host=0.0.0.0
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=false
+      - plugins.security.ssl.transport.pemcert_filepath=certs/coord-2-all.pem
+      - plugins.security.ssl.transport.pemkey_filepath=certs/coord-2.key
+      - plugins.security.ssl.transport.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.ssl.transport.enforce_hostname_verification=false
+      - plugins.security.ssl.http.pemcert_filepath=certs/coord-2-all.pem
+      - plugins.security.ssl.http.pemkey_filepath=certs/coord-2.key
+      - plugins.security.ssl.http.pemtrustedcas_filepath=certs/ca.pem
+      - plugins.security.allow_unsafe_democertificates=false
+      - plugins.security.allow_default_init_securityindex=false
+      - plugins.security.authcz.admin_dn=["CN=admin"]
+      - plugins.security.nodes_dn=["CN=cm-1","CN=cm-2","CN=cm-3","CN=data-1","CN=data-2","CN=data-3","CN=search-1","CN=search-2","CN=coord-1","CN=coord-2"]
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 768m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 | grep -q 'OpenSearch'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:3.6.0
+    container_name: os-dashboards-prod
+    depends_on:
+      coord-1:
+        condition: service_healthy
+      coord-2:
+        condition: service_healthy
+    volumes:
+      - os-certs:/usr/share/opensearch-dashboards/config/certs
+    ports:
+      - ${OPENSEARCH_DASHBOARDS_PORT_PROD}:5601
+    environment:
+      - OPENSEARCH_HOSTS=["https://coord-1:9200","https://coord-2:9200"]
+      - OPENSEARCH_SSL_VERIFICATIONMODE=none
+      - OPENSEARCH_USERNAME=kibanaserver
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_KIBANA_PASSWORD}
+      - SERVER_SSL_ENABLED=false
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1 302 Found'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+volumes:
+  minio-data:
+    driver: local
+  os-certs:
+    driver: local
+  cm-data-1:
+    driver: local
+  cm-data-2:
+    driver: local
+  cm-data-3:
+    driver: local
+  data-data-1:
+    driver: local
+  data-data-2:
+    driver: local
+  data-data-3:
+    driver: local
+  search-data-1:
+    driver: local
+  search-data-2:
+    driver: local
+  coord-data-1:
+    driver: local
+  coord-data-2:
+    driver: local

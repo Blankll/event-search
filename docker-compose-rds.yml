@@ -1,16 +1,15 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:5.7
+    platform: linux/amd64
     container_name: mysql-5.7
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
       MYSQL_DATABASE: eventdb-mysql
       MYSQL_USER: eventuser-mysql
-      MYSQL_PASSWORD: eventpass-mysql
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-eventpass-mysql}
     ports:
-      - "3306:3306"
+      - '3306:3306'
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
@@ -22,9 +21,9 @@ services:
     environment:
       POSTGRES_DB: eventdb-postgres
       POSTGRES_USER: eventuser-postgres
-      POSTGRES_PASSWORD: eventpass-postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eventpass-postgres}
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -34,16 +33,11 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: sql-server
     environment:
-    # Host: localhost (or sql-server from other containers in the same network)
-    # Port: 1433
-    # Username: sa
-    # Password: Eventpass-sqlserver1
-    # Default Database: master
-      ACCEPT_EULA: "Y"
-      SA_PASSWORD: "Eventpass-sqlserver1"
-      MSSQL_PID: "Developer" 
+      ACCEPT_EULA: 'Y'
+      SA_PASSWORD: ${SA_PASSWORD:-Eventpass-sqlserver1}
+      MSSQL_PID: 'Developer'
     ports:
-      - "1433:1433"
+      - '1433:1433'
     volumes:
       - sqlserver_data:/var/opt/mssql
     networks:

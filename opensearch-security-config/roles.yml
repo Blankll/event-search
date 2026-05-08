@@ -1,0 +1,37 @@
+---
+_meta:
+  type: "roles"
+  config_version: 2
+
+all_access:
+  reserved: true
+  cluster_permissions:
+    - "*"
+  index_permissions:
+    - index: "*"
+      allowed_actions:
+        - "*"
+
+kibana_server:
+  reserved: true
+  cluster_permissions:
+    - cluster:monitor/nodes/info
+    - cluster:monitor/main
+    - indices:data/read/scroll
+    - indices:data/read/scroll/clear
+  index_permissions:
+    - index: ".kibana*"
+      allowed_actions:
+        - "*"
+    - index: ".opensearch_dashboards*"
+      allowed_actions:
+        - "*"
+    - index: ".tasks"
+      allowed_actions:
+        - indices:data/read/index
+        - indices:data/write/index
+    - index: "*"
+      allowed_actions:
+        - indices:admin/get
+        - indices:admin/mappings/get
+        - indices:data/read/search

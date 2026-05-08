@@ -1,0 +1,662 @@
+name: elastic-cluster-production
+
+services:
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+    user: "0"
+    command: >
+      bash -c '
+        if [ x${ELASTIC_PASSWORD} == x ]; then
+          echo "Set the ELASTIC_PASSWORD environment variable in the .env file";
+          exit 1;
+        elif [ x${KIBANA_PASSWORD} == x ]; then
+          echo "Set the KIBANA_PASSWORD environment variable in the .env file";
+          exit 1;
+        fi;
+        if [ ! -f config/certs/ca.zip ]; then
+          echo "Creating CA";
+          bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip;
+          unzip config/certs/ca.zip -d config/certs;
+        fi;
+        if [ ! -f config/certs/certs.zip ]; then
+          echo "Creating certs for all nodes";
+          echo -ne \
+          "instances:\n"\
+          "  - name: master-1\n"\
+          "    dns:\n"\
+          "      - master-1\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: master-2\n"\
+          "    dns:\n"\
+          "      - master-2\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: master-3\n"\
+          "    dns:\n"\
+          "      - master-3\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: data-1\n"\
+          "    dns:\n"\
+          "      - data-1\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: data-2\n"\
+          "    dns:\n"\
+          "      - data-2\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: data-3\n"\
+          "    dns:\n"\
+          "      - data-3\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: data-4\n"\
+          "    dns:\n"\
+          "      - data-4\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: data-5\n"\
+          "    dns:\n"\
+          "      - data-5\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: coord-1\n"\
+          "    dns:\n"\
+          "      - coord-1\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: coord-2\n"\
+          "    dns:\n"\
+          "      - coord-2\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: ingest-1\n"\
+          "    dns:\n"\
+          "      - ingest-1\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          > config/certs/instances.yml;
+          bin/elasticsearch-certutil cert --silent --pem -out config/certs/certs.zip --in config/certs/instances.yml --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key;
+          unzip config/certs/certs.zip -d config/certs;
+        fi;
+        echo "Setting file permissions";
+        chown -R root:root config/certs;
+        find . -type d -exec chmod 750 \{\} \;;
+        find . -type f -exec chmod 640 \{\} \;;
+        echo "Waiting for Elasticsearch availability";
+        until curl -s --cacert config/certs/ca/ca.crt https://master-1:9200 | grep -q "missing authentication credentials"; do sleep 30; done;
+        echo "Setting kibana_system password";
+        until curl -s -X POST --cacert config/certs/ca/ca.crt -u elastic:${ELASTIC_PASSWORD} -H "Content-Type: application/json" https://master-1:9200/_security/user/kibana_system/_password -d "{\"password\":\"${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
+        echo "All done!";
+      '
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f config/certs/master-1/master-1.crt ]"]
+      interval: 1s
+      timeout: 5s
+      retries: 120
+
+  master-1:
+    depends_on:
+      setup:
+        condition: service_healthy
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: master-1
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - masterdata1:/usr/share/elasticsearch/data
+    environment:
+      - node.name=master-1
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=master
+      - cluster.initial_master_nodes=master-1,master-2,master-3
+      - discovery.seed_hosts=master-2,master-3
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/master-1/master-1.key
+      - xpack.security.http.ssl.certificate=certs/master-1/master-1.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/master-1/master-1.key
+      - xpack.security.transport.ssl.certificate=certs/master-1/master-1.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+    mem_limit: 512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  master-2:
+    depends_on:
+      - master-1
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: master-2
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - masterdata2:/usr/share/elasticsearch/data
+    environment:
+      - node.name=master-2
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=master
+      - cluster.initial_master_nodes=master-1,master-2,master-3
+      - discovery.seed_hosts=master-1,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/master-2/master-2.key
+      - xpack.security.http.ssl.certificate=certs/master-2/master-2.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/master-2/master-2.key
+      - xpack.security.transport.ssl.certificate=certs/master-2/master-2.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+    mem_limit: 512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  master-3:
+    depends_on:
+      - master-2
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: master-3
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - masterdata3:/usr/share/elasticsearch/data
+    environment:
+      - node.name=master-3
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=master
+      - cluster.initial_master_nodes=master-1,master-2,master-3
+      - discovery.seed_hosts=master-1,master-2
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/master-3/master-3.key
+      - xpack.security.http.ssl.certificate=certs/master-3/master-3.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/master-3/master-3.key
+      - xpack.security.transport.ssl.certificate=certs/master-3/master-3.crt
+      - xpack.security.transport.ssl.ertificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+    mem_limit: 512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  data-1:
+    depends_on:
+      master-1:
+        condition: service_healthy
+      master-2:
+        condition: service_healthy
+      master-3:
+        condition: service_healthy
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: data-1
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - datadata1:/usr/share/elasticsearch/data
+    environment:
+      - node.name=data-1
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/data-1/data-1.key
+      - xpack.security.http.ssl.certificate=certs/data-1/data-1.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/data-1/data-1.key
+      - xpack.security.transport.ssl.certificate=certs/data-1/data-1.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  data-2:
+    depends_on:
+      - data-1
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: data-2
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - datadata2:/usr/share/elasticsearch/data
+    environment:
+      - node.name=data-2
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/data-2/data-2.key
+      - xpack.security.http.ssl.certificate=certs/data-2/data-2.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/data-2/data-2.key
+      - xpack.security.transport.ssl.certificate=certs/data-2/data-2.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  data-3:
+    depends_on:
+      - data-2
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: data-3
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - datadata3:/usr/share/elasticsearch/data
+    environment:
+      - node.name=data-3
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/data-3/data-3.key
+      - xpack.security.http.ssl.certificate=certs/data-3/data-3.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/data-3/data-3.key
+      - xpack.security.transport.ssl.certificate=certs/data-3/data-3.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  data-4:
+    depends_on:
+      - data-3
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: data-4
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - datadata4:/usr/share/elasticsearch/data
+    environment:
+      - node.name=data-4
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/data-4/data-4.key
+      - xpack.security.http.ssl.certificate=certs/data-4/data-4.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/data-4/data-4.key
+      - xpack.security.transport.ssl.certificate=certs/data-4/data-4.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  data-5:
+    depends_on:
+      - data-4
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: data-5
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - datadata5:/usr/share/elasticsearch/data
+    environment:
+      - node.name=data-5
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=data
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/data-5/data-5.key
+      - xpack.security.http.ssl.certificate=certs/data-5/data-5.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/data-5/data-5.key
+      - xpack.security.transport.ssl.certificate=certs/data-5/data-5.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  coord-1:
+    depends_on:
+      data-1:
+        condition: service_healthy
+      data-2:
+        condition: service_healthy
+      data-3:
+        condition: service_healthy
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: coord-1
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - coorddata1:/usr/share/elasticsearch/data
+    ports:
+      - ${ES_PORT_PROD_1}:9200
+    environment:
+      - node.name=coord-1
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/coord-1/coord-1.key
+      - xpack.security.http.ssl.certificate=certs/coord-1/coord-1.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/coord-1/coord-1.key
+      - xpack.security.transport.ssl.certificate=certs/coord-1/coord-1.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 768m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  coord-2:
+    depends_on:
+      - coord-1
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: coord-2
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - coorddata2:/usr/share/elasticsearch/data
+    ports:
+      - ${ES_PORT_PROD_2}:9200
+    environment:
+      - node.name=coord-2
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/coord-2/coord-2.key
+      - xpack.security.http.ssl.certificate=certs/coord-2/coord-2.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/coord-2/coord-2.key
+      - xpack.security.transport.ssl.certificate=certs/coord-2/coord-2.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 768m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  ingest-1:
+    depends_on:
+      - coord-2
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    container_name: ingest-1
+    volumes:
+      - certs-prod:/usr/share/elasticsearch/config/certs
+      - ingestdata1:/usr/share/elasticsearch/data
+    environment:
+      - node.name=ingest-1
+      - cluster.name=${CLUSTER_NAME_PROD}
+      - node.roles=data,ingest
+      - discovery.seed_hosts=master-1,master-2,master-3
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/ingest-1/ingest-1.key
+      - xpack.security.http.ssl.certificate=certs/ingest-1/ingest-1.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/ingest-1/ingest-1.key
+      - xpack.security.transport.ssl.certificate=certs/ingest-1/ingest-1.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    mem_limit: 768m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  kibana-prod:
+    depends_on:
+      coord-1:
+        condition: service_healthy
+      coord-2:
+        condition: service_healthy
+    image: docker.elastic.co/kibana/kibana:9.3.3
+    container_name: kibana-prod
+    volumes:
+      - certs-prod:/usr/share/kibana/config/certs
+      - kibanadata-prod:/usr/share/kibana/data
+    ports:
+      - ${KIBANA_PORT_PROD}:5601
+    environment:
+      - SERVERNAME=kibana-prod
+      - ELASTICSEARCH_HOSTS=https://coord-1:9200,https://coord-2:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
+      - "NODE_OPTIONS=--max-old-space-size=512"
+    mem_limit: 768m
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1 302 Found'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+volumes:
+  certs-prod:
+    driver: local
+  masterdata1:
+    driver: local
+  masterdata2:
+    driver: local
+  masterdata3:
+    driver: local
+  datadata1:
+    driver: local
+  datadata2:
+    driver: local
+  datadata3:
+    driver: local
+  datadata4:
+    driver: local
+  datadata5:
+    driver: local
+  coorddata1:
+    driver: local
+  coorddata2:
+    driver: local
+  ingestdata1:
+    driver: local
+  kibanadata-prod:
+    driver: local

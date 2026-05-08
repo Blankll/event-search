@@ -1,0 +1,16 @@
+---
+_meta:
+  type: "rolesmapping"
+  config_version: 2
+
+all_access:
+  reserved: true
+  backend_roles:
+    - "admin"
+  users:
+    - "admin"
+
+kibana_server:
+  reserved: true
+  users:
+    - "kibanaserver"

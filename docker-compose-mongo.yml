@@ -1,0 +1,129 @@
+services:
+  # MongoDB 4.4 - Last stable version before wire protocol changes
+  event-mongo-4:
+    image: mongo:4.4
+    container_name: event-mongo-4
+    ports:
+      - 27017:27017
+    environment:
+      - MONGO_INITDB_DATABASE=eventdb-mongo-4
+    volumes:
+      - mongo-data-4:/data/db
+    command: mongod --bind_ip_all
+
+  event-mongo-express-4:
+    image: mongo-express:latest
+    container_name: event-mongo-express-4
+    ports:
+      - 8081:8081
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://event-mongo-4:27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=${MONGO_EXPRESS_PASSWORD:-admin}
+    depends_on:
+      - event-mongo-4
+
+  # MongoDB 5.0 - Introduced time series collections, new wire protocol
+  event-mongo-5:
+    image: mongo:5.0
+    container_name: event-mongo-5
+    ports:
+      - 27018:27017
+    environment:
+      - MONGO_INITDB_DATABASE=eventdb-mongo-5
+    volumes:
+      - mongo-data-5:/data/db
+    command: mongod --bind_ip_all
+
+  event-mongo-express-5:
+    image: mongo-express:latest
+    container_name: event-mongo-express-5
+    ports:
+      - 8082:8081
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://event-mongo-5:27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=${MONGO_EXPRESS_PASSWORD:-admin}
+    depends_on:
+      - event-mongo-5
+
+  # MongoDB 6.0 - Change streams enhancement, performance improvements
+  event-mongo-6:
+    image: mongo:6.0
+    container_name: event-mongo-6
+    ports:
+      - 27019:27017
+    environment:
+      - MONGO_INITDB_DATABASE=eventdb-mongo-6
+    volumes:
+      - mongo-data-6:/data/db
+    command: mongod --bind_ip_all
+
+  event-mongo-express-6:
+    image: mongo-express:latest
+    container_name: event-mongo-express-6
+    ports:
+      - 8083:8081
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://event-mongo-6:27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=${MONGO_EXPRESS_PASSWORD:-admin}
+    depends_on:
+      - event-mongo-6
+
+  # MongoDB 7.0 - Queryable encryption
+  event-mongo-7:
+    image: mongo:7.0
+    container_name: event-mongo-7
+    ports:
+      - 27020:27017
+    environment:
+      - MONGO_INITDB_DATABASE=eventdb-mongo-7
+    volumes:
+      - mongo-data-7:/data/db
+    command: mongod --bind_ip_all
+
+  event-mongo-express-7:
+    image: mongo-express:latest
+    container_name: event-mongo-express-7
+    ports:
+      - 8084:8081
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://event-mongo-7:27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=${MONGO_EXPRESS_PASSWORD:-admin}
+    depends_on:
+      - event-mongo-7
+
+  # MongoDB 8.0 - Latest (2024) - Major performance/security updates
+  event-mongo-8:
+    image: mongo:8.0
+    container_name: event-mongo-8
+    ports:
+      - 27021:27017
+    environment:
+      - MONGO_INITDB_DATABASE=eventdb-mongo-8
+    volumes:
+      - mongo-data-8:/data/db
+    command: mongod --bind_ip_all
+
+  event-mongo-express-8:
+    image: mongo-express:latest
+    container_name: event-mongo-express-8
+    ports:
+      - 8085:8081
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://event-mongo-8:27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=${MONGO_EXPRESS_PASSWORD:-admin}
+    depends_on:
+      - event-mongo-8
+
+volumes:
+  mongo-data-4:
+  mongo-data-5:
+  mongo-data-6:
+  mongo-data-7:
+  mongo-data-8:
+
+name: event-mongo-version-sets

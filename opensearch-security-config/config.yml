@@ -1,0 +1,22 @@
+---
+_meta:
+  type: "config"
+  config_version: 2
+
+dynamic:
+  http:
+    anonymous_auth_enabled: false
+    xff:
+      enabled: false
+
+  authc:
+    basic_internal_auth_domain:
+      description: "Authenticate via HTTP Basic against internal users database"
+      http_enabled: true
+      transport_enabled: true
+      order: 0
+      http_auth_type: basic
+      authentication_backend:
+        type: intern
+        internal_users_database: internalusers
+      challenge: false

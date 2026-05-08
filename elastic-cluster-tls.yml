@@ -1,4 +1,4 @@
-version: "2.2"
+name: elastic-cluster-tls
 
 services:
   setup:

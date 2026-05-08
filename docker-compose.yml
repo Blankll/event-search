@@ -1,106 +1,119 @@
-version: "3.9"
 services:
-#  event-es-7:
-#    image: elasticsearch:7.17.10
-#    container_name: event-es-7
-#    ports:
-#      - 9200:9200
-#    environment:
-#      - cluster.name=event-es-7-cluster
-#      - node.name=event-es-7-node
-#      - discovery.type=single-node
-#      - xpack.security.enabled=false
-#      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
-#    volumes:
-#      - es-data-7:/usr/share/elasticsearch/data
-#  event-es-kibana-7:
-#    image: kibana:7.17.10
-#    container_name: event-es-kibana-7
-#    ports:
-#      - 5601:5601
-#    environment:
-#      - ELASTICSEARCH_HOSTS=http://event-es-7:9200
-#    depends_on:
-#      - event-es-7
+  event-es-9:
+    image: elasticsearch:9.3.3
+    container_name: event-es-9
+    ports:
+      - 19200:9200
+    environment:
+      - cluster.name=event-es-9-cluster
+      - node.name=event-es-9-node
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    volumes:
+      - es-data-9:/usr/share/elasticsearch/data
+  event-es-kibana-9:
+    image: kibana:9.3.3
+    container_name: event-es-kibana-9
+    ports:
+      - 5605:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://event-es-9:9200
+    depends_on:
+      - event-es-9
   event-es-8:
-    image: elasticsearch:8.8.1
+    image: elasticsearch:8.19.14
     container_name: event-es-8
     ports:
-      - 9200:9200
+      - 9201:9200
     environment:
       - cluster.name=event-es-8-cluster
       - node.name=event-es-8-node
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
       - http.cors.enabled=true
       - http.cors.allow-origin='*'
     volumes:
       - es-data-8:/usr/share/elasticsearch/data
   event-es-kibana-8:
-    image: kibana:8.8.1
+    image: kibana:8.19.14
     container_name: event-es-kibana-8
     ports:
       - 5602:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://event-es-8:9200
     depends_on:
       - event-es-8
-#  event-os:
-#    image: opensearchproject/opensearch:2.8.0
-#    container_name: event-os
-#    ports:
-#      - 9202:9200
-#    environment:
-#      - cluster.name=event-os-cluster
-#      - node.name=event-os-node
-#      - discovery.type=single-node
-#      - plugins.security.disabled=true
-#      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
-#    volumes:
-#      - os-data:/usr/share/elasticsearch/data
-#  event-os-dashboards:
-#    image: opensearchproject/opensearch-dashboards:2.8.0
-#    container_name: event-os-dashboards
-#    ports:
-#      - 5603:5601
-#    environment:
-#      - OPENSEARCH_HOSTS=http://event-os:9200
-#      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
-#    depends_on:
-#      - event-os
-#  event-es-6:
-#    image: elasticsearch:6.8.23
-#    container_name: event-es-6
-#    ports:
-#      - 9203:9200
-#    environment:
-#      - cluster.name=event-es-6-cluster
-#      - node.name=event-es-6-node
-#      - discovery.type=single-node
-#      - xpack.security.enabled=false
-#      - "ES_JAVA_OPTS=-Xms750m -Xmx750m"
-#    volumes:
-#      - es-data-6:/usr/share/elasticsearch/data
-#  event-es-kibana-6:
-#    image: kibana:6.8.23
-#    container_name: event-es-kibana-6
-#    ports:
-#      - 5604:5601
-#    environment:
-#      - ELASTICSEARCH_HOSTS=http://event-es-6:9200
-#    depends_on:
-#      - event-es-6
-#  zincsearch:
-#    image: public.ecr.aws/zinclabs/zincsearch:0.4.7
-#    container_name: zincsearch
-#    ports:
-#      - 4080:4080
-#    environment:
-#      ZINC_FIRST_ADMIN_USER: admin
-#      ZINC_FIRST_ADMIN_PASSWORD: Complexpass#123
-#  doris:
-#    build:
-#       context: .
-#       dockerfile: ./dockerfile-doris
+  event-es-7:
+    image: elasticsearch:7.17.27
+    container_name: event-es-7
+    ports:
+      - 9202:9200
+    environment:
+      - cluster.name=event-es-7-cluster
+      - node.name=event-es-7-node
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    volumes:
+      - es-data-7:/usr/share/elasticsearch/data
+  event-es-kibana-7:
+    image: kibana:7.17.27
+    container_name: event-es-kibana-7
+    ports:
+      - 15601:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://event-es-7:9200
+    depends_on:
+      - event-es-7
+  event-es-6:
+    image: elasticsearch:6.8.23
+    platform: linux/amd64
+    container_name: event-es-6
+    ports:
+      - 9203:9200
+    environment:
+      - cluster.name=event-es-6-cluster
+      - node.name=event-es-6-node
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    volumes:
+      - es-data-6:/usr/share/elasticsearch/data
+  event-es-kibana-6:
+    image: kibana:6.8.23
+    platform: linux/amd64
+    container_name: event-es-kibana-6
+    ports:
+      - 5604:5601
+    environment:
+      - ELASTICSEARCH_HOSTS=http://event-es-6:9200
+    depends_on:
+      - event-es-6
+  event-os:
+    image: opensearchproject/opensearch:2.8.0
+    container_name: event-os
+    ports:
+      - 9204:9200
+    environment:
+      - cluster.name=event-os-cluster
+      - node.name=event-os-node
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    volumes:
+      - os-data:/usr/share/elasticsearch/data
+  event-os-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.8.0
+    container_name: event-os-dashboards
+    ports:
+      - 5603:5601
+    environment:
+      - OPENSEARCH_HOSTS=http://event-os:9200
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    depends_on:
+      - event-os
 #  kafka:
 #    image: 'bitnami/kafka:latest'
 #    ports:
@@ -128,10 +141,23 @@ services:
 #      - 9099:8080
 #    depends_on:
 #      - kafka
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
+    user: root
+    ports:
+      - 8000:8000
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data/"
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
 
 volumes:
-  es-data-7:
+  es-data-9:
   es-data-8:
-  os-data:
+  es-data-7:
   es-data-6:
+  os-data:
   kafka-data:
+  dynamodb-data:
+
+name: event-search-version-sets
