@@ -2,7 +2,7 @@ name: elastic-cluster-production
 
 services:
   setup:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
     user: "0"
@@ -100,6 +100,8 @@ services:
         find . -type f -exec chmod 640 \{\} \;;
         echo "Waiting for Elasticsearch availability";
         until curl -s --cacert config/certs/ca/ca.crt https://master-1:9200 | grep -q "missing authentication credentials"; do sleep 30; done;
+        echo "Setting elastic user password explicitly";
+        until curl -s -X POST --cacert config/certs/ca/ca.crt -u elastic:${ELASTIC_PASSWORD} -H "Content-Type: application/json" https://master-1:9200/_security/user/elastic/_password -d "{\"password\":\"${ELASTIC_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
         echo "Setting kibana_system password";
         until curl -s -X POST --cacert config/certs/ca/ca.crt -u elastic:${ELASTIC_PASSWORD} -H "Content-Type: application/json" https://master-1:9200/_security/user/kibana_system/_password -d "{\"password\":\"${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
         echo "All done!";
@@ -114,7 +116,7 @@ services:
     depends_on:
       setup:
         condition: service_healthy
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: master-1
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -140,8 +142,8 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
-    mem_limit: 512m
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    mem_limit: 1g
     ulimits:
       memlock:
         soft: -1
@@ -158,8 +160,9 @@ services:
 
   master-2:
     depends_on:
-      - master-1
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+      setup:
+        condition: service_healthy
+    image: elasticsearch:9.4.0
     container_name: master-2
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -184,8 +187,8 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
-    mem_limit: 512m
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    mem_limit: 1g
     ulimits:
       memlock:
         soft: -1
@@ -202,8 +205,9 @@ services:
 
   master-3:
     depends_on:
-      - master-2
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+      setup:
+        condition: service_healthy
+    image: elasticsearch:9.4.0
     container_name: master-3
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -225,11 +229,11 @@ services:
       - xpack.security.transport.ssl.enabled=true
       - xpack.security.transport.ssl.key=certs/master-3/master-3.key
       - xpack.security.transport.ssl.certificate=certs/master-3/master-3.crt
-      - xpack.security.transport.ssl.ertificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
-    mem_limit: 512m
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    mem_limit: 1g
     ulimits:
       memlock:
         soft: -1
@@ -252,7 +256,7 @@ services:
         condition: service_healthy
       master-3:
         condition: service_healthy
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: data-1
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -276,7 +280,7 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
     mem_limit: 1g
     ulimits:
       memlock:
@@ -295,7 +299,7 @@ services:
   data-2:
     depends_on:
       - data-1
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: data-2
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -319,7 +323,7 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
     mem_limit: 1g
     ulimits:
       memlock:
@@ -338,7 +342,7 @@ services:
   data-3:
     depends_on:
       - data-2
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: data-3
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -362,7 +366,7 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
     mem_limit: 1g
     ulimits:
       memlock:
@@ -381,7 +385,7 @@ services:
   data-4:
     depends_on:
       - data-3
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: data-4
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -405,7 +409,7 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
     mem_limit: 1g
     ulimits:
       memlock:
@@ -424,7 +428,7 @@ services:
   data-5:
     depends_on:
       - data-4
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: data-5
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -448,7 +452,7 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms768m -Xmx768m"
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
     mem_limit: 1g
     ulimits:
       memlock:
@@ -472,7 +476,7 @@ services:
         condition: service_healthy
       data-3:
         condition: service_healthy
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: coord-1
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -482,7 +486,7 @@ services:
     environment:
       - node.name=coord-1
       - cluster.name=${CLUSTER_NAME_PROD}
-      - node.roles=
+      - node.roles=[]
       - discovery.seed_hosts=master-1,master-2,master-3
       - bootstrap.memory_lock=true
       - xpack.security.enabled=true
@@ -498,8 +502,8 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    mem_limit: 768m
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    mem_limit: 1g
     ulimits:
       memlock:
         soft: -1
@@ -517,7 +521,7 @@ services:
   coord-2:
     depends_on:
       - coord-1
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: coord-2
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -527,7 +531,7 @@ services:
     environment:
       - node.name=coord-2
       - cluster.name=${CLUSTER_NAME_PROD}
-      - node.roles=
+      - node.roles=[]
       - discovery.seed_hosts=master-1,master-2,master-3
       - bootstrap.memory_lock=true
       - xpack.security.enabled=true
@@ -543,8 +547,8 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    mem_limit: 768m
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    mem_limit: 1g
     ulimits:
       memlock:
         soft: -1
@@ -562,7 +566,7 @@ services:
   ingest-1:
     depends_on:
       - coord-2
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    image: elasticsearch:9.4.0
     container_name: ingest-1
     volumes:
       - certs-prod:/usr/share/elasticsearch/config/certs
@@ -586,8 +590,8 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    mem_limit: 768m
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    mem_limit: 1g
     ulimits:
       memlock:
         soft: -1
@@ -608,7 +612,7 @@ services:
         condition: service_healthy
       coord-2:
         condition: service_healthy
-    image: docker.elastic.co/kibana/kibana:9.3.3
+    image: kibana:9.4.0
     container_name: kibana-prod
     volumes:
       - certs-prod:/usr/share/kibana/config/certs
@@ -616,13 +620,13 @@ services:
     ports:
       - ${KIBANA_PORT_PROD}:5601
     environment:
-      - SERVERNAME=kibana-prod
-      - ELASTICSEARCH_HOSTS=https://coord-1:9200,https://coord-2:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
-      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
-      - "NODE_OPTIONS=--max-old-space-size=512"
-    mem_limit: 768m
+      SERVERNAME: kibana-prod
+      ELASTICSEARCH_HOSTS: '["https://coord-1:9200","https://coord-2:9200"]'
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: ${KIBANA_PASSWORD}
+      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: config/certs/ca/ca.crt
+      NODE_OPTIONS: --max-old-space-size=768
+    mem_limit: 1g
     healthcheck:
       test:
         [
