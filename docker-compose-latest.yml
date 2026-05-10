@@ -1,0 +1,182 @@
+name: search-latest
+
+services:
+  es-9-4:
+    image: elasticsearch:9.4.0
+    container_name: latest-es-9-4
+    ports:
+      - 19250:9200
+    environment:
+      - cluster.name=latest-es-cluster
+      - node.name=latest-es-node
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ELASTIC_PASSWORD=${SEARCH_PASSWORD}
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    volumes:
+      - search-latest-es-data:/usr/share/elasticsearch/data
+    networks:
+      - search-latest
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q 'missing authentication credentials'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  os-3-5:
+    image: opensearchproject/opensearch:3.5.0
+    container_name: latest-os-3-5
+    ports:
+      - 19270:9200
+    environment:
+      - cluster.name=latest-os-cluster
+      - node.name=latest-os-node
+      - discovery.type=single-node
+      - plugins.security.disabled=false
+      - plugins.security.ssl.http.enabled=false
+      - "OPENSEARCH_JAVA_OPTS=-Xms384m -Xmx384m"
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${SEARCH_PASSWORD}
+    volumes:
+      - search-latest-os-data:/usr/share/opensearch/data
+    networks:
+      - search-latest
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u admin:${SEARCH_PASSWORD} http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  os-dash-3-5:
+    depends_on:
+      os-3-5:
+        condition: service_healthy
+    image: opensearchproject/opensearch-dashboards:3.5.0
+    container_name: latest-os-dash-3-5
+    ports:
+      - 15650:5601
+    environment:
+      - OPENSEARCH_HOSTS=http://os-3-5:9200
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=${SEARCH_PASSWORD}
+    networks:
+      - search-latest
+
+  easy-2-1:
+    image: infinilabs/easysearch:2.2.0
+    container_name: latest-easy-2-1
+    ports:
+      - 19280:9200
+    environment:
+      - cluster.name=latest-easy-cluster
+      - node.name=latest-easy-node
+      - cluster.initial_master_nodes=latest-easy-node
+      - security.enabled=true
+      - security.ssl.http.enabled=false
+      - EASYSEARCH_INITIAL_ADMIN_PASSWORD=${SEARCH_PASSWORD}
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+    volumes:
+      - search-latest-easy-data:/app/easysearch/data
+    networks:
+      - search-latest
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u admin:${SEARCH_PASSWORD} http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  es-7-17:
+    image: elasticsearch:7.17.28
+    container_name: latest-es-7-17
+    ports:
+      - 19310:9200
+    environment:
+      - cluster.name=latest-es7-cluster
+      - node.name=latest-es7-node
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - ELASTIC_PASSWORD=${SEARCH_PASSWORD}
+      - "ES_JAVA_OPTS=-Xms384m -Xmx384m"
+      - "discovery.type=single-node"
+    volumes:
+      - search-latest-es7-data:/usr/share/elasticsearch/data
+    networks:
+      - search-latest
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q 'missing authentication credentials'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+
+  mongo-4-0:
+    image: mongo:4.0
+    container_name: latest-mongo-4-0
+    ports:
+      - 19320:27017
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=${SEARCH_PASSWORD}
+    volumes:
+      - search-latest-mongo4-data:/data/db
+    networks:
+      - search-latest
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  mongo-8-3:
+    image: mongodb/mongodb-community-server:8.3-ubi9-slim
+    container_name: latest-mongo-8-3
+    ports:
+      - 19330:27017
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=${SEARCH_PASSWORD}
+    volumes:
+      - search-latest-mongo8-data:/data/db
+    networks:
+      - search-latest
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: latest-dynamodb-local
+    ports:
+      - 19290:8000
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data/"
+    volumes:
+      - search-latest-dynamodb-data:/home/dynamodblocal/data
+    networks:
+      - search-latest
+
+volumes:
+  search-latest-es-data:
+  search-latest-os-data:
+  search-latest-easy-data:
+  search-latest-es7-data:
+  search-latest-mongo4-data:
+  search-latest-mongo8-data:
+  search-latest-dynamodb-data:
+
+networks:
+  search-latest:
