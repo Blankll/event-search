@@ -163,9 +163,10 @@ services:
     container_name: latest-dynamodb-local
     ports:
       - 19290:8000
-    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data/"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
+    working_dir: /home/dynamodblocal
     volumes:
-      - search-latest-dynamodb-data:/home/dynamodblocal/data
+      - ./docker/dynamodb:/home/dynamodblocal/data
     networks:
       - search-latest
 
@@ -176,7 +177,6 @@ volumes:
   search-latest-es7-data:
   search-latest-mongo4-data:
   search-latest-mongo8-data:
-  search-latest-dynamodb-data:
 
 networks:
   search-latest:
