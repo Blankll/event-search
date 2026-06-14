@@ -91,7 +91,6 @@ services:
     command:
       - --store=unistore
       - --path=/tmp/tidb
-      - --host=0.0.0.0
       - --port=4000
       - --status=10080
     networks:
@@ -128,7 +127,7 @@ services:
     ports:
       - '26257:26257'
       - '18080:8080'
-    command: start-single-node --insecure --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080
+    command: start-single-node --insecure --listen-addr=sqlkit-cockroachdb-24:26257 --http-addr=sqlkit-cockroachdb-24:8080
     volumes:
       - cockroach_data:/cockroach/cockroach-data
     networks:
