@@ -1,0 +1,170 @@
+# SQLKit Core Database Testing Stack
+#
+# Covers 7 distinct databases across 4 SQL protocol families:
+#   PostgreSQL wire:  PostgreSQL, CockroachDB
+#   MySQL wire:       MySQL, MariaDB, TiDB
+#   T-SQL:            SQL Server
+#   HTTP/columnar:    ClickHouse
+#
+# Embedded databases (no Docker): SQLite, DuckDB, H2
+# Cloud-only (no Docker):          Snowflake, Redshift
+#
+# Start:  docker compose -f docker-compose-sqlkit-core.yml up -d
+# Stop:   docker compose -f docker-compose-sqlkit-core.yml down
+# Reset:  docker compose -f docker-compose-sqlkit-core.yml down -v
+
+name: sqlkit-core
+
+services:
+  # ── PostgreSQL 16 ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sqlkit-postgres-16
+    environment:
+      POSTGRES_DB: sqlkit
+      POSTGRES_USER: sqlkit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sqlkitpass}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sqlkit-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sqlkit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── MySQL 8.0 ──────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: sqlkit-mysql-8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: sqlkit
+      MYSQL_USER: sqlkit
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sqlkitpass}
+    ports:
+      - '3306:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - sqlkit-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── MariaDB 11 ─────────────────────────────────────────────────
+  mariadb:
+    image: mariadb:11
+    container_name: sqlkit-mariadb-11
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-rootpass}
+      MARIADB_DATABASE: sqlkit
+      MARIADB_USER: sqlkit
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-sqlkitpass}
+    ports:
+      - '3307:3306'
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - sqlkit-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── TiDB 8.5 (MySQL-compatible distributed) ───────────────────
+  tidb:
+    image: pingcap/tidb:v8.5.0
+    container_name: sqlkit-tidb-8
+    ports:
+      - '4000:4000'
+    command:
+      - --store=unistore
+      - --path=/tmp/tidb
+      - --host=0.0.0.0
+      - --port=4000
+      - --status=10080
+    networks:
+      - sqlkit-net
+    # TiDB image is minimal; no healthcheck binary available.
+    # Starts in ~15s. Verify externally:
+    #   mysql -h 127.0.0.1 -P 4000 -u root -e 'SELECT 1'
+
+  # ── SQL Server 2022 ────────────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlkit-sqlserver-2022
+    environment:
+      ACCEPT_EULA: 'Y'
+      SA_PASSWORD: ${SA_PASSWORD:-Sqlkitpass1}
+      MSSQL_PID: 'Developer'
+    ports:
+      - '1433:1433'
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - sqlkit-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P '${SA_PASSWORD:-Sqlkitpass1}' -C -Q 'SELECT 1' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── CockroachDB 24.1 (PostgreSQL-compatible distributed) ──────
+  cockroachdb:
+    image: cockroachdb/cockroach:v24.1.0
+    container_name: sqlkit-cockroachdb-24
+    ports:
+      - '26257:26257'
+      - '18080:8080'
+    command: start-single-node --insecure --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080
+    volumes:
+      - cockroach_data:/cockroach/cockroach-data
+    networks:
+      - sqlkit-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health?ready=1"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  # ── ClickHouse (columnar / HTTP wire) ──────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: sqlkit-clickhouse
+    environment:
+      CLICKHOUSE_USER: sqlkit
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-sqlkitpass}
+      CLICKHOUSE_DB: sqlkit
+    ports:
+      - '8123:8123'
+      - '19000:9000'   # host:19000 → container:9000 (avoids conflict with MinIO :9000)
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - sqlkit-net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  mysql_data:
+  mariadb_data:
+  sqlserver_data:
+  cockroach_data:
+  clickhouse_data:
+
+networks:
+  sqlkit-net:
+    driver: bridge

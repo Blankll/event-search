@@ -1,0 +1,49 @@
+# SQLKit Analytical Query Engine Stack
+#
+# Distributed SQL query engines (not storage databases).
+# DuckDB is embedded — handle at test level, not Docker.
+# Snowflake & Redshift are cloud-only — no Docker images.
+#
+# Start:  docker compose -f docker-compose-sqlkit-analytics.yml up -d
+# Stop:   docker compose -f docker-compose-sqlkit-analytics.yml down
+# Reset:  docker compose -f docker-compose-sqlkit-analytics.yml down -v
+
+name: sqlkit-analytics
+
+services:
+  # ── Trino (distributed SQL query engine) ───────────────────────
+  trino:
+    image: trinodb/trino:latest
+    container_name: sqlkit-trino
+    ports:
+      - '8088:8080'
+    networks:
+      - sqlkit-analytics-net
+    # No auth by default. Connect with any JDBC/HTTP client.
+    # Web UI: http://localhost:8088
+    # Query: curl -X POST http://localhost:8088/v1/statement -d 'SELECT 1'
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # ── Presto (distributed SQL query engine) ──────────────────────
+  presto:
+    image: prestodb/presto:latest
+    container_name: sqlkit-presto
+    ports:
+      - '8089:8080'
+    networks:
+      - sqlkit-analytics-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+networks:
+  sqlkit-analytics-net:
+    driver: bridge

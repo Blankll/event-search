@@ -1,0 +1,102 @@
+# SQLKit 信创 (Xinchuang) Database Stack
+#
+# Chinese domestic databases: MySQL-compatible and proprietary.
+# TiDB is in sqlkit-core since it's commonly used for daily testing.
+#
+# Start:  docker compose -f docker-compose-sqlkit-xc.yml up -d
+# Stop:   docker compose -f docker-compose-sqlkit-xc.yml down
+# Reset:  docker compose -f docker-compose-sqlkit-xc.yml down -v
+# Note: OceanBase takes 2-5 minutes to initialize.
+
+name: sqlkit-xc
+
+services:
+  # ── OceanBase (蚂蚁集团 信创 MySQL-compatible) ──────────────────
+  oceanbase:
+    image: oceanbase/oceanbase-ce:latest
+    container_name: sqlkit-oceanbase
+    environment:
+      MODE: mini
+      OB_TENANT_PASSWORD: ${OCEANBASE_PASSWORD:-ocean#pass1}
+      OB_SYS_PASSWORD: ${OCEANBASE_SYS_PASSWORD:-sys@pass1}
+    ports:
+      - '2881:2881'
+    networks:
+      - sqlkit-xc-net
+    # Takes 2-5 min to init. Check: docker logs sqlkit-oceanbase | tail -1
+    # Should see "boot success!" when ready.
+    # Connect: mysql -h 127.0.0.1 -P 2881 -u root@test -p'${OCEANBASE_PASSWORD}'
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'boot success' /home/admin/oceanbase/log/observer.log 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  # ── GBase 8a (南大通用 信创 MPP analytical) ────────────────────
+  gbase8a:
+    image: shihd/gbase8a:1.0
+    container_name: sqlkit-gbase8a
+    ports:
+      - '5258:5258'
+    networks:
+      - sqlkit-xc-net
+    # Default user: root / pass: root / DB: gbase
+    # No healthcheck — minimal image, no extra tools.
+
+  # ── XuguDB (虚谷 信创 proprietary) ──────────────────────────────
+  xugudb:
+    image: pandama0314/xugu-database:12.9.10-20250731-x86_64
+    container_name: sqlkit-xugudb
+    ports:
+      - '5138:5138'
+    networks:
+      - sqlkit-xc-net
+    # Default user: SYSDBA / DB: SYSTEM
+    # No healthcheck — minimal image.
+
+  # ── PolarDB-X (阿里云 信创 MySQL-compatible) ────────────────────
+  # polardbx:
+  #   image: polardbx/polardb-x:v2.4.2_5.4.19
+  #   container_name: sqlkit-polardbx
+  #   ports:
+  #     - '8527:8527'
+  #   networks:
+  #     - sqlkit-xc-net
+  #   mem_limit: 12g
+  #   # ⚠️ REQUIRES 12GB+ RAM. The all-in-one image runs CN, DN, and CDC.
+  #   # Connect: mysql -h127.0.0.1 -P8527 -upolardbx_root -p123456
+  #   # Start takes ~1 minute.
+
+  # ── DM8 (达梦 信创 proprietary) ─────────────────────────────────
+  # dm8:
+  #   image: dm8:dm8_20220822_rev166351_x86_rh6_64_ctm
+  #   container_name: sqlkit-dm8
+  #   privileged: true
+  #   environment:
+  #     PAGE_SIZE: 16
+  #     CASE_SENSITIVE: 0
+  #     UNICODE_FLAG: 1
+  #     INSTANCE_NAME: dm8
+  #     SYSDBA_PWD: ${DM8_PASSWORD:-Dameng@12345}
+  #   ports:
+  #     - '5236:5236'
+  #   volumes:
+  #     - dm8_data:/opt/dmdbms/data
+  #   networks:
+  #     - sqlkit-xc-net
+  #   # Manual setup required:
+  #   #   1. Download from https://eco.dameng.com
+  #   #   2. docker load -i dm8_20220822_rev166351_x86_rh6_64_ctm.tar
+  #   # Default user: SYSDBA / pass: Dameng@12345
+
+  # ── TDSQL (腾讯云 信创 MySQL-compatible) ────────────────────────
+  # No Docker image available — requires multi-node ansible deployment.
+  # Testing requires a cloud instance or dedicated environment.
+
+volumes:
+  dm8_data:
+
+networks:
+  sqlkit-xc-net:
+    driver: bridge

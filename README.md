@@ -21,7 +21,7 @@ All credentials are intentionally simple for ease of use during development:
 
 ### Docker Compose Stacks
 
-Seven separate compose files for different database stacks:
+Eleven separate compose files for different database stacks:
 
 | Stack | File | Services | Memory (Approx) |
 |-------|------|----------|-----------------|
@@ -30,7 +30,11 @@ Seven separate compose files for different database stacks:
 | **ES TLS Cluster** | `elastic-cluster-tls.yml` | 3-node ES cluster + Kibana (TLS enabled) | ~3 GB |
 | **ES Production Cluster** | `elastic-cluster-production.yml` | 11-node ES 9.4 cluster with dedicated roles | ~13 GB |
 | **OS Production Cluster** | `opensearch-cluster-production.yml` | 11-node OS + MinIO (Reader/Writer separation) | ~10 GB |
-| **RDS** | `docker-compose-rds.yml` | MySQL, PostgreSQL, SQL Server | ~2 GB |
+| **SQLKit Core** | `docker-compose-sqlkit-core.yml` | PostgreSQL, MySQL 8.0, MariaDB, SQL Server, TiDB, CockroachDB, ClickHouse | ~3 GB |
+| **SQLKit PG Ext** | `docker-compose-sqlkit-pgext.yml` | YugabyteDB, TimescaleDB, OpenGauss, HighGo (+ commented: KingbaseES, GaussDB) | ~2 GB |
+| **SQLKit 信创** | `docker-compose-sqlkit-xc.yml` | OceanBase, GBase 8a, XuguDB (+ commented: PolarDB-X, DM8) | ~3 GB |
+| **SQLKit Analytics** | `docker-compose-sqlkit-analytics.yml` | Trino, Presto | ~1 GB |
+| **SQLKit Enterprise** | `docker-compose-sqlkit-enterprise.yml` | H2 (+ commented: Oracle XE, Db2) | ~0.5 GB |
 | **MongoDB** | `docker-compose-mongo.yml` | MongoDB 4/5/6/7/8 + Mongo Express | ~3 GB |
 
 ### Setup
@@ -51,13 +55,39 @@ cp .env.example .env
 - `OPENSEARCH_ADMIN_PASSWORD` - OpenSearch admin password
 - `OPENSEARCH_KIBANA_PASSWORD` - OpenSearch Dashboards password
 - `MINIO_ROOT_PASSWORD` - MinIO S3 storage password
-- `MYSQL_ROOT_PASSWORD` - MySQL root password
+- `MYSQL_ROOT_PASSWORD` - MySQL/MariaDB root password
 - `MYSQL_PASSWORD` - MySQL application password
-- `POSTGRES_PASSWORD` - PostgreSQL password
+- `POSTGRES_PASSWORD` - PostgreSQL/TimescaleDB password
 - `SA_PASSWORD` - SQL Server SA password
+- `MARIADB_ROOT_PASSWORD` - MariaDB root password
+- `MARIADB_PASSWORD` - MariaDB application password
+- `CLICKHOUSE_PASSWORD` - ClickHouse password
+- `OPENGUASS_PASSWORD` - OpenGauss password
+- `HIGHGO_PASSWORD` - HighGo password
+- `OCEANBASE_PASSWORD` - OceanBase tenant password
+- `OCEANBASE_SYS_PASSWORD` - OceanBase sys password
 - `MONGO_EXPRESS_PASSWORD` - Mongo Express web UI password
 
 ### Start/Stop Commands
+
+**Start a single stack:**
+```bash
+# SQLKit stacks
+docker compose -f docker-compose-sqlkit-core.yml up -d
+docker compose -f docker-compose-sqlkit-pgext.yml up -d
+docker compose -f docker-compose-sqlkit-xc.yml up -d
+docker compose -f docker-compose-sqlkit-analytics.yml up -d
+docker compose -f docker-compose-sqlkit-enterprise.yml up -d
+
+# Other stacks (examples)
+docker compose -f docker-compose-latest.yml up -d
+docker compose -f docker-compose-mongo.yml up -d
+```
+
+**Stop a single stack:**
+```bash
+docker compose -f docker-compose-sqlkit-core.yml down
+```
 
 **Start all stacks (parallel):**
 ```bash
@@ -66,7 +96,11 @@ docker compose -f docker-compose-latest.yml up -d && \
 docker compose -f elastic-cluster-tls.yml up -d && \
 docker compose -f elastic-cluster-production.yml up -d && \
 docker compose -f opensearch-cluster-production.yml up -d && \
-docker compose -f docker-compose-rds.yml up -d && \
+docker compose -f docker-compose-sqlkit-core.yml up -d && \
+docker compose -f docker-compose-sqlkit-pgext.yml up -d && \
+docker compose -f docker-compose-sqlkit-xc.yml up -d && \
+docker compose -f docker-compose-sqlkit-analytics.yml up -d && \
+docker compose -f docker-compose-sqlkit-enterprise.yml up -d && \
 docker compose -f docker-compose-mongo.yml up -d
 ```
 
@@ -77,7 +111,11 @@ docker compose -f docker-compose-latest.yml down && \
 docker compose -f elastic-cluster-tls.yml down && \
 docker compose -f elastic-cluster-production.yml down && \
 docker compose -f opensearch-cluster-production.yml down && \
-docker compose -f docker-compose-rds.yml down && \
+docker compose -f docker-compose-sqlkit-core.yml down && \
+docker compose -f docker-compose-sqlkit-pgext.yml down && \
+docker compose -f docker-compose-sqlkit-xc.yml down && \
+docker compose -f docker-compose-sqlkit-analytics.yml down && \
+docker compose -f docker-compose-sqlkit-enterprise.yml down && \
 docker compose -f docker-compose-mongo.yml down
 ```
 
@@ -88,7 +126,11 @@ docker compose -f docker-compose-latest.yml down -v && \
 docker compose -f elastic-cluster-tls.yml down -v && \
 docker compose -f elastic-cluster-production.yml down -v && \
 docker compose -f opensearch-cluster-production.yml down -v && \
-docker compose -f docker-compose-rds.yml down -v && \
+docker compose -f docker-compose-sqlkit-core.yml down -v && \
+docker compose -f docker-compose-sqlkit-pgext.yml down -v && \
+docker compose -f docker-compose-sqlkit-xc.yml down -v && \
+docker compose -f docker-compose-sqlkit-analytics.yml down -v && \
+docker compose -f docker-compose-sqlkit-enterprise.yml down -v && \
 docker compose -f docker-compose-mongo.yml down -v
 ```
 
@@ -214,12 +256,155 @@ open http://localhost:5630
 # Login: admin / $OPENSEARCH_ADMIN_PASSWORD
 ```
 
-### RDS Stack (`docker-compose-rds.yml`)
-| Service | Port | Credentials |
-|---------|------|-------------|
-| MySQL 5.7 | 3306 | user: `eventuser-mysql`, pass: `$MYSQL_PASSWORD`, db: `eventdb-mysql` |
-| PostgreSQL 16 | 5432 | user: `eventuser-postgres`, pass: `$POSTGRES_PASSWORD`, db: `eventdb-postgres` |
-| SQL Server 2022 | 1433 | user: `sa`, pass: `$SA_PASSWORD`, db: `master` |
+### SQLKit Core Stack (`docker-compose-sqlkit-core.yml`)
+
+Multi-dialect SQL database testing stack. Covers 4 distinct wire protocols (PG wire, MySQL, T-SQL, HTTP/columnar).
+
+**Services & Ports:**
+| Service | Version | Port | Wire Protocol | Credentials |
+|---------|---------|------|---------------|-------------|
+| PostgreSQL | 16 | 5432 | PG wire | user: `sqlkit`, pass: `$POSTGRES_PASSWORD`, db: `sqlkit` |
+| MySQL | 8.0 | 3306 | MySQL | user: `sqlkit`, pass: `$MYSQL_PASSWORD`, db: `sqlkit` |
+| MariaDB | 11 | 3307 | MySQL-compat | user: `sqlkit`, pass: `$MARIADB_PASSWORD`, db: `sqlkit` |
+| TiDB | 8.5 | 4000 | MySQL-compat | user: `root` (no password), db: `test` |
+| SQL Server | 2022 | 1433 | T-SQL | user: `sa`, pass: `$SA_PASSWORD`, db: `master` |
+| CockroachDB | 24.1 | 26257 | PG wire | no auth (insecure), UI: `http://localhost:18080` |
+| ClickHouse | latest | 8123 (HTTP) / 19000 (native) | HTTP/columnar | user: `sqlkit`, pass: `$CLICKHOUSE_PASSWORD`, db: `sqlkit` |
+
+**Total Memory:** ~3 GB active.
+
+**Quick Test:**
+```bash
+# PostgreSQL
+docker exec sqlkit-postgres-16 psql -U sqlkit -d sqlkit -c 'SELECT 1'
+
+# MySQL
+docker exec sqlkit-mysql-8 mysql -u sqlkit -p"${MYSQL_PASSWORD}" -e 'SELECT 1'
+
+# TiDB
+mysql -h 127.0.0.1 -P 4000 -u root -e 'SELECT 1'
+
+# SQL Server
+docker exec sqlkit-sqlserver-2022 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "${SA_PASSWORD}" -C -Q 'SELECT 1'
+
+# CockroachDB
+docker exec sqlkit-cockroachdb-24 ./cockroach sql --insecure -e 'SELECT 1'
+
+# ClickHouse HTTP
+curl -u sqlkit:"${CLICKHOUSE_PASSWORD}" http://localhost:8123?query=SELECT+1
+
+# MariaDB
+docker exec sqlkit-mariadb-11 mysql -u sqlkit -p"${MARIADB_PASSWORD}" -e 'SELECT 1'
+```
+
+**Embedded databases** (no Docker, handle at test level): SQLite, DuckDB, H2
+
+---
+
+### SQLKit PG Ecosystem Stack (`docker-compose-sqlkit-pgext.yml`)
+
+PG-wire compatible databases. Some (OpenGauss, HighGo) are 信创 domestic.
+
+| Service | Version | Port | Credentials | Notes |
+|---------|---------|------|-------------|-------|
+| YugabyteDB | latest | 5433 | no auth (insecure) | Distributed PG-wire |
+| TimescaleDB | latest-pg16 | 5434 | user: `sqlkit`, pass: `$POSTGRES_PASSWORD`, db: `sqlkit` | PG extension |
+| OpenGauss | latest | 5435 | user: `gaussdb`, pass: `$OPENGUASS_PASSWORD` | 信创 PG-based, needs `privileged` |
+| HighGo | 6.0.1 | 5866 | user: `highgo`, pass: `$HIGHGO_PASSWORD` | 信创 PG-based, needs `privileged` |
+
+**Commented services** (require manual setup — see compose file):
+- **KingbaseES** — download tar from kingbase.com.cn, `docker load`
+- **GaussDB** — community image at docker.io/enmotech/gaussdb
+- **GBase 8c** — needs systemd + multi-step init inside container
+- **UXDB** — no public Docker image
+
+**Quick Test:**
+```bash
+# YugabyteDB
+docker exec sqlkit-yugabyte /home/yugabyte/postgres/bin/pg_isready -h localhost -p 5433
+
+# TimescaleDB
+docker exec sqlkit-timescale pg_isready -U sqlkit
+
+# OpenGauss
+docker exec sqlkit-opengauss pg_isready -U gaussdb
+
+# HighGo
+docker exec sqlkit-highgo psql -U highgo -c 'SELECT 1'
+```
+
+---
+
+### SQLKit 信创 Stack (`docker-compose-sqlkit-xc.yml`)
+
+Chinese domestic databases (信创). TiDB is in `sqlkit-core` since it's the most common for daily testing.
+
+| Service | Version | Port | Credentials | Notes |
+|---------|---------|------|-------------|-------|
+| OceanBase | latest | 2881 | user: `root@test`, pass: `$OCEANBASE_PASSWORD` | MySQL-compat, 2-5 min init |
+| GBase 8a | 1.0 | 5258 | user: `root`, pass: `root`, db: `gbase` | MPP analytical |
+| XuguDB | 12.9 | 5138 | user: `SYSDBA`, db: `SYSTEM` | Proprietary |
+
+**Commented services** (require manual setup):
+- **PolarDB-X** — needs 12GB+ RAM. Image: `polardbx/polardb-x`
+- **DM8** — download tar from eco.dameng.com, `docker load`
+- **TDSQL** — no Docker image, requires multi-node ansible deployment
+
+**Quick Test:**
+```bash
+# OceanBase (wait 2-5 min for boot)
+docker logs sqlkit-oceanbase 2>&1 | tail -1  # should show "boot success!"
+mysql -h 127.0.0.1 -P 2881 -u root@test -p"${OCEANBASE_PASSWORD}" -e 'SELECT 1'
+
+# GBase 8a (default user: root / pass: root)
+# docker exec -it sqlkit-gbase8a bash  # explore available tools
+
+# XuguDB
+# Use JDBC: jdbc:xugu://localhost:5138/SYSTEM
+```
+
+---
+
+### SQLKit Analytics Stack (`docker-compose-sqlkit-analytics.yml`)
+
+Distributed SQL query engines. No auth by default.
+
+| Service | Version | Port | Notes |
+|---------|---------|------|-------|
+| Trino | latest | 8088 | Web UI: `http://localhost:8088` |
+| Presto | latest | 8089 | Similar to Trino, older codebase |
+
+**Quick Test:**
+```bash
+# Trino
+curl -X POST http://localhost:8088/v1/statement -d 'SELECT 1'
+
+# Presto
+curl -X POST http://localhost:8089/v1/statement -d 'SELECT 1'
+```
+
+---
+
+### SQLKit Enterprise Stack (`docker-compose-sqlkit-enterprise.yml`)
+
+Databases requiring license acceptance or registry login.
+
+| Service | Version | Port | Credentials | Notes |
+|---------|---------|------|-------------|-------|
+| H2 | latest | 18082 (web) / 19092 (tcp) | user: `sa`, pass: (blank) | Java embedded, server mode |
+
+**Commented services** (require license acceptance):
+- **Oracle XE 21c** — `docker login container-registry.oracle.com` + accept license
+- **IBM Db2** — `docker login icr.io` + accept license
+
+**Quick Test:**
+```bash
+# H2 Console
+open http://localhost:18082
+# JDBC: jdbc:h2:tcp://localhost:19092/mem:test
+```
+
+---
 
 ### MongoDB Stack (`docker-compose-mongo.yml`)
 | Version | Port | Mongo Express | Key Feature |
@@ -267,8 +452,14 @@ curl -k -u admin:$OPENSEARCH_ADMIN_PASSWORD https://localhost:9230/_cluster/heal
 # MongoDB
 docker exec latest-mongo-8-3 mongosh --eval "db.adminCommand('ping')"
 
-# PostgreSQL
-docker exec postgres pg_isready
+# SQLKit Core — PostgreSQL
+docker exec sqlkit-postgres-16 pg_isready -U sqlkit
+
+# SQLKit Core — CockroachDB
+docker exec sqlkit-cockroachdb-24 ./cockroach sql --insecure -e 'SELECT 1'
+
+# SQLKit PG Ext — OpenGauss
+docker exec sqlkit-opengauss pg_isready -U gaussdb
 ```
 
 ## Deploy

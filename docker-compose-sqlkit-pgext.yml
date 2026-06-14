@@ -1,0 +1,148 @@
+# SQLKit PostgreSQL Ecosystem Stack
+#
+# PG-wire compatible databases for cross-compatibility testing.
+# Covers foreign PG-derivatives and PG-based 信创 (domestic) databases.
+#
+# Start:  docker compose -f docker-compose-sqlkit-pgext.yml up -d
+# Stop:   docker compose -f docker-compose-sqlkit-pgext.yml down
+# Reset:  docker compose -f docker-compose-sqlkit-pgext.yml down -v
+
+name: sqlkit-pgext
+
+services:
+  # ── YugabyteDB (distributed PG-wire) ───────────────────────────
+  yugabytedb:
+    image: yugabytedb/yugabyte:latest
+    container_name: sqlkit-yugabyte
+    ports:
+      - '5433:5433'
+      - '15433:15433'
+    command:
+      - sh
+      - -c
+      - |
+        bin/yugabyted start --daemon=false --listen=0.0.0.0 --ysql_port=5433
+    networks:
+      - sqlkit-pgext-net
+    healthcheck:
+      test: ["CMD", "/home/yugabyte/postgres/bin/pg_isready", "-h", "localhost", "-p", "5433"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  # ── TimescaleDB (PG extension for time-series) ─────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: sqlkit-timescale
+    environment:
+      POSTGRES_DB: sqlkit
+      POSTGRES_USER: sqlkit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sqlkitpass}
+    ports:
+      - '5434:5432'
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    networks:
+      - sqlkit-pgext-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sqlkit -d sqlkit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── OpenGauss (华为 信创 PG-based) ─────────────────────────────
+  opengauss:
+    image: opengauss/opengauss:latest
+    container_name: sqlkit-opengauss
+    privileged: true
+    environment:
+      GS_PASSWORD: ${OPENGUASS_PASSWORD:-openGauss@123}
+    ports:
+      - '5435:5432'
+    networks:
+      - sqlkit-pgext-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gaussdb -d postgres || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── HighGo (瀚高 信创 PG-based) ────────────────────────────────
+  highgo:
+    image: jefferlau/highgo:6.0.1
+    container_name: sqlkit-highgo
+    privileged: true
+    environment:
+      HIGHGO_PASSWORD: ${HIGHGO_PASSWORD:-Highgo@12345}
+    ports:
+      - '5866:5866'
+    volumes:
+      - highgo_data:/opt/HighGo6.0.1-cluster/data
+    networks:
+      - sqlkit-pgext-net
+    # Default user: highgo / pass: Highgo@12345
+    # Password must be 8+ chars with upper, lower, digit, and special
+
+  # ── KingbaseES (人大金仓 信创 PG-based) ─────────────────────────
+  # kingbasees:
+  #   image: kingbase:v1
+  #   container_name: sqlkit-kingbasees
+  #   privileged: true
+  #   environment:
+  #     DB_USER: sqlkit
+  #     DB_PASSWORD: ${KINGBASEES_PASSWORD:-kingbase@123}
+  #     DB_MODE: oracle
+  #     NEED_START: yes
+  #   ports:
+  #     - '54321:54321'
+  #   volumes:
+  #     - kingbasees_data:/home/kingbase/userdata
+  #   networks:
+  #     - sqlkit-pgext-net
+  #   # Manual setup required:
+  #   #   1. Download KingbaseES from https://en.kingbase.com.cn/Download.html
+  #   #   2. docker load -i kingbase.tar
+  #   # Default user: system / pass: 12345678ab
+
+  # ── GaussDB (华为 信创 PG-based) ───────────────────────────────
+  # gaussdb:
+  #   image: enmotech/gaussdb:latest
+  #   container_name: sqlkit-gaussdb
+  #   privileged: true
+  #   environment:
+  #     GS_PASSWORD: ${GAUSSDB_PASSWORD:-Gauss@123}
+  #   ports:
+  #     - '5436:5432'
+  #   networks:
+  #     - sqlkit-pgext-net
+  #   # Community image at docker.io/enmotech/gaussdb. May need specific tags.
+
+  # ── GBase 8c (南大通用 信创 PG-based) ───────────────────────────
+  # gbase8c:
+  #   image: lhrbest/gbase8c:8cV5_S3.0.0B76_1.0
+  #   container_name: sqlkit-gbase8c
+  #   privileged: true
+  #   environment:
+  #     GS_PASSWORD: ${GBASE8C_PASSWORD:-Gbase@123}
+  #   ports:
+  #     - '5437:5432'
+  #   networks:
+  #     - sqlkit-pgext-net
+  #   # Requires systemd inside container. After start:
+  #   #   docker exec sqlkit-gbase8c systemctl start etcd.service
+  #   #   docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
+
+  # ── UXDB (优炫 信创) ───────────────────────────────────────────
+  # No public Docker image available. Download from https://uxdb.net.cn/download
+  # and build custom image.
+
+volumes:
+  timescale_data:
+  highgo_data:
+  # kingbasees_data:
+
+networks:
+  sqlkit-pgext-net:
+    driver: bridge
