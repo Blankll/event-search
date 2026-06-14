@@ -26,25 +26,25 @@ services:
     # Console:  http://localhost:18082
 
   # ── Oracle Database Express Edition ─────────────────────────────
-  # oracle:
-  #   image: container-registry.oracle.com/database/express:21c
-  #   container_name: sqlkit-oracle
-  #   environment:
-  #     ORACLE_PWD: ${ORACLE_PASSWORD:-Oracle#123}
-  #     ORACLE_CHARACTERSET: AL32UTF8
-  #   ports:
-  #     - '1521:1521'
-  #   volumes:
-  #     - oracle_data:/opt/oracle/oradata
-  #   networks:
-  #     - sqlkit-enterprise-net
-  #   shm_size: 2g
-  #   # Manual setup required:
-  #   #   1. docker login container-registry.oracle.com
-  #   #   2. Accept license at https://container-registry.oracle.com
-  #   #   3. docker pull container-registry.oracle.com/database/express:21c
-  #   # Default SID: XE, user: system / pass: Oracle#123
-  #   # Start takes 2-5 minutes.
+  # Prerequisites:
+  #   1. docker login container-registry.oracle.com
+  #   2. Accept license at https://container-registry.oracle.com
+  #   3. docker pull container-registry.oracle.com/database/express:21c
+  oracle:
+    image: container-registry.oracle.com/database/express:21c
+    container_name: sqlkit-oracle
+    environment:
+      ORACLE_PWD: ${ORACLE_PASSWORD:-Oracle#123}
+      ORACLE_CHARACTERSET: AL32UTF8
+    ports:
+      - '1521:1521'
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    networks:
+      - sqlkit-enterprise-net
+    shm_size: 2g
+    # Default SID: XE, user: system / pass: $ORACLE_PASSWORD
+    # Start takes 2-5 minutes.
 
   # ── IBM Db2 Community Edition ──────────────────────────────────
   # db2:

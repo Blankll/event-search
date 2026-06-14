@@ -392,9 +392,15 @@ Databases requiring license acceptance or registry login.
 | Service | Version | Port | Credentials | Notes |
 |---------|---------|------|-------------|-------|
 | H2 | latest | 18082 (web) / 19092 (tcp) | user: `sa`, pass: (blank) | Java embedded, server mode |
+| Oracle XE | 21c | 1521 | user: `system`, pass: `$ORACLE_PASSWORD`, SID: `XE` | Requires license acceptance |
 
-**Commented services** (require license acceptance):
-- **Oracle XE 21c** — `docker login container-registry.oracle.com` + accept license
+**Prerequisites for Oracle:**
+```bash
+docker login container-registry.oracle.com   # then accept license online
+docker pull container-registry.oracle.com/database/express:21c
+```
+
+**Commented service** (requires IBM registry login):
 - **IBM Db2** — `docker login icr.io` + accept license
 
 **Quick Test:**
