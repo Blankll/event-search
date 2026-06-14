@@ -21,7 +21,7 @@ All credentials are intentionally simple for ease of use during development:
 
 ### Docker Compose Stacks
 
-Eleven separate compose files for different database stacks:
+Ten separate compose files for different database stacks:
 
 | Stack | File | Services | Memory (Approx) |
 |-------|------|----------|-----------------|
@@ -34,7 +34,6 @@ Eleven separate compose files for different database stacks:
 | **SQLKit PG Ext** | `docker-compose-sqlkit-pgext.yml` | YugabyteDB, TimescaleDB, OpenGauss, HighGo (+ commented: KingbaseES, GaussDB) | ~2 GB |
 | **SQLKit 信创** | `docker-compose-sqlkit-xc.yml` | OceanBase, GBase 8a, XuguDB (+ commented: PolarDB-X, DM8) | ~3 GB |
 | **SQLKit Analytics** | `docker-compose-sqlkit-analytics.yml` | Trino, Presto | ~1 GB |
-| **SQLKit Enterprise** | `docker-compose-sqlkit-enterprise.yml` | H2 (+ commented: Oracle XE, Db2) | ~0.5 GB |
 | **MongoDB** | `docker-compose-mongo.yml` | MongoDB 4/5/6/7/8 + Mongo Express | ~3 GB |
 
 ### Setup
@@ -66,19 +65,36 @@ cp .env.example .env
 - `HIGHGO_PASSWORD` - HighGo password
 - `OCEANBASE_PASSWORD` - OceanBase tenant password
 - `OCEANBASE_SYS_PASSWORD` - OceanBase sys password
+- `ORACLE_PASSWORD` - Oracle password
+- `DB2_PASSWORD` - Db2 password
 - `MONGO_EXPRESS_PASSWORD` - Mongo Express web UI password
+
+### First-Time Setup
+
+**1. Registry login (Oracle & Db2 only — one-time):**
+```bash
+docker login container-registry.oracle.com
+# → then accept license at https://container-registry.oracle.com
+docker pull container-registry.oracle.com/database/express:21c
+
+docker login icr.io
+docker pull icr.io/db2_community:latest
+```
+
+**2. Start any stack:**
+```bash
+docker compose -f docker-compose-sqlkit-core.yml up -d
+```
 
 ### Start/Stop Commands
 
 **Start a single stack:**
 ```bash
 # SQLKit stacks
-docker compose -f docker-compose-sqlkit-core.yml up -d
+docker compose -f docker-compose-sqlkit-core.yml up -d  # all 10 databases
 docker compose -f docker-compose-sqlkit-pgext.yml up -d
 docker compose -f docker-compose-sqlkit-xc.yml up -d
 docker compose -f docker-compose-sqlkit-analytics.yml up -d
-docker compose -f docker-compose-sqlkit-enterprise.yml up -d
-
 # Other stacks (examples)
 docker compose -f docker-compose-latest.yml up -d
 docker compose -f docker-compose-mongo.yml up -d
@@ -100,7 +116,6 @@ docker compose -f docker-compose-sqlkit-core.yml up -d && \
 docker compose -f docker-compose-sqlkit-pgext.yml up -d && \
 docker compose -f docker-compose-sqlkit-xc.yml up -d && \
 docker compose -f docker-compose-sqlkit-analytics.yml up -d && \
-docker compose -f docker-compose-sqlkit-enterprise.yml up -d && \
 docker compose -f docker-compose-mongo.yml up -d
 ```
 
@@ -115,7 +130,6 @@ docker compose -f docker-compose-sqlkit-core.yml down && \
 docker compose -f docker-compose-sqlkit-pgext.yml down && \
 docker compose -f docker-compose-sqlkit-xc.yml down && \
 docker compose -f docker-compose-sqlkit-analytics.yml down && \
-docker compose -f docker-compose-sqlkit-enterprise.yml down && \
 docker compose -f docker-compose-mongo.yml down
 ```
 
@@ -130,7 +144,6 @@ docker compose -f docker-compose-sqlkit-core.yml down -v && \
 docker compose -f docker-compose-sqlkit-pgext.yml down -v && \
 docker compose -f docker-compose-sqlkit-xc.yml down -v && \
 docker compose -f docker-compose-sqlkit-analytics.yml down -v && \
-docker compose -f docker-compose-sqlkit-enterprise.yml down -v && \
 docker compose -f docker-compose-mongo.yml down -v
 ```
 
@@ -258,7 +271,9 @@ open http://localhost:5630
 
 ### SQLKit Core Stack (`docker-compose-sqlkit-core.yml`)
 
-Multi-dialect SQL database testing stack. Covers 4 distinct wire protocols (PG wire, MySQL, T-SQL, HTTP/columnar).
+Multi-dialect SQL database testing stack. Covers PG wire, MySQL, T-SQL, HTTP/columnar, PL/SQL, embedded Java DB, and Db2.
+
+First-time users: complete the registry login steps in [First-Time Setup](#first-time-setup) above before running `up -d`, otherwise Oracle & Db2 will fail to pull.
 
 **Services & Ports:**
 | Service | Version | Port | Wire Protocol | Credentials |
@@ -270,8 +285,11 @@ Multi-dialect SQL database testing stack. Covers 4 distinct wire protocols (PG w
 | SQL Server | 2022 | 1433 | T-SQL | user: `sa`, pass: `$SA_PASSWORD`, db: `master` |
 | CockroachDB | 24.1 | 26257 | PG wire | no auth (insecure), UI: `http://localhost:18080` |
 | ClickHouse | latest | 8123 (HTTP) / 19000 (native) | HTTP/columnar | user: `sqlkit`, pass: `$CLICKHOUSE_PASSWORD`, db: `sqlkit` |
+| Oracle XE | 21c | 1521 | PL/SQL | user: `system`, pass: `$ORACLE_PASSWORD`, SID: `XE` |
+| Db2 | latest | 50000 | DB2 SQL | user: `db2inst1`, pass: `$DB2_PASSWORD` |
+| H2 | latest | 18082 (web) / 19092 (tcp) | Java SQL | user: `sa`, pass: (blank) |
 
-**Total Memory:** ~3 GB active.
+**Total Memory:** ~5 GB active (~3 GB without Oracle).
 
 **Quick Test:**
 ```bash
@@ -295,9 +313,18 @@ curl -u sqlkit:"${CLICKHOUSE_PASSWORD}" http://localhost:8123?query=SELECT+1
 
 # MariaDB
 docker exec sqlkit-mariadb-11 mysql -u sqlkit -p"${MARIADB_PASSWORD}" -e 'SELECT 1'
+
+# Oracle (wait 2-5 min for init)
+docker exec sqlkit-oracle sqlplus system/"${ORACLE_PASSWORD}"@XE <<< 'SELECT 1 FROM dual;'
+
+# Db2 (wait 3-5 min for init)
+docker exec sqlkit-db2 su - db2inst1 -c 'db2 "SELECT 1 FROM sysibm.sysdummy1"'
+
+# H2 Console
+open http://localhost:18082
 ```
 
-**Embedded databases** (no Docker, handle at test level): SQLite, DuckDB, H2
+**Embedded databases** (no Docker, handle at test level): SQLite, DuckDB
 
 ---
 
@@ -382,34 +409,6 @@ curl -X POST http://localhost:8088/v1/statement -d 'SELECT 1'
 # Presto
 curl -X POST http://localhost:8089/v1/statement -d 'SELECT 1'
 ```
-
----
-
-### SQLKit Enterprise Stack (`docker-compose-sqlkit-enterprise.yml`)
-
-Databases requiring license acceptance or registry login.
-
-| Service | Version | Port | Credentials | Notes |
-|---------|---------|------|-------------|-------|
-| H2 | latest | 18082 (web) / 19092 (tcp) | user: `sa`, pass: (blank) | Java embedded, server mode |
-| Oracle XE | 21c | 1521 | user: `system`, pass: `$ORACLE_PASSWORD`, SID: `XE` | Requires license acceptance |
-
-**Prerequisites for Oracle:**
-```bash
-docker login container-registry.oracle.com   # then accept license online
-docker pull container-registry.oracle.com/database/express:21c
-```
-
-**Commented service** (requires IBM registry login):
-- **IBM Db2** — `docker login icr.io` + accept license
-
-**Quick Test:**
-```bash
-# H2 Console
-open http://localhost:18082
-# JDBC: jdbc:h2:tcp://localhost:19092/mem:test
-```
-
 ---
 
 ### MongoDB Stack (`docker-compose-mongo.yml`)
