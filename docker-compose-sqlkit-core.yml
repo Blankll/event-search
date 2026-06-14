@@ -1,13 +1,17 @@
 # SQLKit Core Database Testing Stack
 #
-# Covers 7 distinct databases across 4 SQL protocol families:
+# Zero-config databases — docker compose up -d and everything just works.
+# Covers 8 databases across 4 SQL protocol families:
 #   PostgreSQL wire:  PostgreSQL, CockroachDB
 #   MySQL wire:       MySQL, MariaDB, TiDB
-#   T-SQL:            SQL Server
+#   T-SQL:            SQL Server, H2
 #   HTTP/columnar:    ClickHouse
 #
-# Embedded databases (no Docker): SQLite, DuckDB
-# Cloud-only (no Docker):          Snowflake, Redshift
+# Enterprise DBs requiring registry login (Oracle, Db2):
+#   docker compose -f docker-compose-sqlkit-enterprise.yml up -d
+#
+# Embedded (no Docker): SQLite, DuckDB
+# Cloud-only (no Docker): Snowflake, Redshift
 #
 # Start:  docker compose -f docker-compose-sqlkit-core.yml up -d
 # Stop:   docker compose -f docker-compose-sqlkit-core.yml down
@@ -135,27 +139,6 @@ services:
       timeout: 3s
       retries: 15
 
-  # ── Oracle XE 21c ────────────────────────────────────────────────
-  # Prerequisites:
-  #   1. docker login container-registry.oracle.com
-  #   2. Accept license at https://container-registry.oracle.com
-  #   3. docker pull container-registry.oracle.com/database/express:21c
-  oracle:
-    image: container-registry.oracle.com/database/express:21c
-    container_name: sqlkit-oracle
-    environment:
-      ORACLE_PWD: ${ORACLE_PASSWORD:-Oracle#123}
-      ORACLE_CHARACTERSET: AL32UTF8
-    ports:
-      - '1521:1521'
-    volumes:
-      - oracle_data:/opt/oracle/oradata
-    networks:
-      - sqlkit-net
-    shm_size: 2g
-    # Default SID: XE, user: system / pass: $ORACLE_PASSWORD
-    # Start takes 2-5 minutes.
-
   # ── H2 (Java embedded DB — server mode) ────────────────────────
   h2:
     image: oscarfonts/h2:latest
@@ -170,30 +153,6 @@ services:
     # Default user: sa / pass: (blank)
     # JDBC URL: jdbc:h2:tcp://localhost:19092/mem:test
     # Console:  http://localhost:18082
-
-  # ── IBM Db2 Community Edition ──────────────────────────────────
-  # Prerequisites:
-  #   1. docker login icr.io
-  #   2. docker pull icr.io/db2_community:latest
-  db2:
-    image: icr.io/db2_community:latest
-    container_name: sqlkit-db2
-    privileged: true
-    environment:
-      DB2INSTANCE: db2inst1
-      DB2INST1_PASSWORD: ${DB2_PASSWORD:-Db2#pass123}
-      LICENSE: accept
-      DBNAME: sqlkit
-      BLU: false
-      ENABLE_ORACLE_COMPATIBILITY: false
-    ports:
-      - '50000:50000'
-    volumes:
-      - db2_data:/database
-    networks:
-      - sqlkit-net
-    # Default user: db2inst1 / pass: $DB2_PASSWORD
-    # Start takes 3-5 minutes.
 
   # ── ClickHouse (columnar / HTTP wire) ──────────────────────────
   clickhouse:
@@ -224,8 +183,6 @@ volumes:
   sqlserver_data:
   cockroach_data:
   clickhouse_data:
-  oracle_data:
-  db2_data:
 
 networks:
   sqlkit-net:

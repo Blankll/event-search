@@ -1,0 +1,63 @@
+# SQLKit Enterprise Database Stack
+#
+# Databases requiring registry login + license acceptance.
+# Core stack (zero-config) is in docker-compose-sqlkit-core.yml.
+#
+# Prerequisites — run once before first start:
+#   docker login container-registry.oracle.com  # use Auth Token, not SSO password
+#   docker pull container-registry.oracle.com/database/express:21.3.0-xe
+#   docker login icr.io
+#   docker pull icr.io/db2_community:latest
+#
+# Start:  docker compose -f docker-compose-sqlkit-enterprise.yml up -d
+# Stop:   docker compose -f docker-compose-sqlkit-enterprise.yml down
+# Reset:  docker compose -f docker-compose-sqlkit-enterprise.yml down -v
+
+name: sqlkit-enterprise
+
+services:
+  # ── Oracle XE 21c ────────────────────────────────────────────────
+  oracle:
+    image: container-registry.oracle.com/database/express:21.3.0-xe
+    container_name: sqlkit-oracle
+    environment:
+      ORACLE_PWD: ${ORACLE_PASSWORD:-Oracle#123}
+      ORACLE_CHARACTERSET: AL32UTF8
+    ports:
+      - '1521:1521'
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    networks:
+      - sqlkit-ent-net
+    shm_size: 2g
+    # Default SID: XE, user: system / pass: $ORACLE_PASSWORD
+    # Start takes 2-5 minutes.
+
+  # ── IBM Db2 Community Edition ──────────────────────────────────
+  db2:
+    image: icr.io/db2_community:latest
+    container_name: sqlkit-db2
+    privileged: true
+    environment:
+      DB2INSTANCE: db2inst1
+      DB2INST1_PASSWORD: ${DB2_PASSWORD:-Db2#pass123}
+      LICENSE: accept
+      DBNAME: sqlkit
+      BLU: false
+      ENABLE_ORACLE_COMPATIBILITY: false
+    ports:
+      - '50000:50000'
+    volumes:
+      - db2_data:/database
+    networks:
+      - sqlkit-ent-net
+    # Default user: db2inst1 / pass: $DB2_PASSWORD
+    # Start takes 3-5 minutes.
+
+volumes:
+  oracle_data:
+  db2_data:
+
+networks:
+  sqlkit-ent-net:
+    driver: bridge

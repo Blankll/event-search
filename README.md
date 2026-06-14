@@ -21,7 +21,7 @@ All credentials are intentionally simple for ease of use during development:
 
 ### Docker Compose Stacks
 
-Ten separate compose files for different database stacks:
+Eleven separate compose files for different database stacks:
 
 | Stack | File | Services | Memory (Approx) |
 |-------|------|----------|-----------------|
@@ -30,10 +30,11 @@ Ten separate compose files for different database stacks:
 | **ES TLS Cluster** | `elastic-cluster-tls.yml` | 3-node ES cluster + Kibana (TLS enabled) | ~3 GB |
 | **ES Production Cluster** | `elastic-cluster-production.yml` | 11-node ES 9.4 cluster with dedicated roles | ~13 GB |
 | **OS Production Cluster** | `opensearch-cluster-production.yml` | 11-node OS + MinIO (Reader/Writer separation) | ~10 GB |
-| **SQLKit Core** | `docker-compose-sqlkit-core.yml` | PostgreSQL, MySQL 8.0, MariaDB, SQL Server, TiDB, CockroachDB, ClickHouse | ~3 GB |
+| **SQLKit Core** | `docker-compose-sqlkit-core.yml` | PostgreSQL, MySQL 8.0, MariaDB, SQL Server, TiDB, CockroachDB, ClickHouse, H2 | ~3 GB |
 | **SQLKit PG Ext** | `docker-compose-sqlkit-pgext.yml` | YugabyteDB, TimescaleDB, OpenGauss, HighGo (+ commented: KingbaseES, GaussDB) | ~2 GB |
 | **SQLKit 信创** | `docker-compose-sqlkit-xc.yml` | OceanBase, GBase 8a, XuguDB (+ commented: PolarDB-X, DM8) | ~3 GB |
 | **SQLKit Analytics** | `docker-compose-sqlkit-analytics.yml` | Trino, Presto | ~1 GB |
+| **SQLKit Enterprise** | `docker-compose-sqlkit-enterprise.yml` | Oracle XE, Db2 | ~3 GB |
 | **MongoDB** | `docker-compose-mongo.yml` | MongoDB 4/5/6/7/8 + Mongo Express | ~3 GB |
 
 ### Setup
@@ -71,15 +72,8 @@ cp .env.example .env
 
 ### First-Time Setup
 
-**1. Registry login (Oracle & Db2 only — one-time):**
-```bash
-docker login container-registry.oracle.com
-# → then accept license at https://container-registry.oracle.com
-docker pull container-registry.oracle.com/database/express:21c
-
-docker login icr.io
-docker pull icr.io/db2_community:latest
-```
+**1. Registry login (Enterprise stack only — one-time):**
+See [SQLKit Enterprise Stack](#sqlkit-enterprise-stack-docker-compose-sqlkit-enterpriseyml) section for instructions.
 
 **2. Start any stack:**
 ```bash
@@ -91,10 +85,11 @@ docker compose -f docker-compose-sqlkit-core.yml up -d
 **Start a single stack:**
 ```bash
 # SQLKit stacks
-docker compose -f docker-compose-sqlkit-core.yml up -d  # all 10 databases
+docker compose -f docker-compose-sqlkit-core.yml up -d  # 8 databases, zero-config
 docker compose -f docker-compose-sqlkit-pgext.yml up -d
 docker compose -f docker-compose-sqlkit-xc.yml up -d
 docker compose -f docker-compose-sqlkit-analytics.yml up -d
+docker compose -f docker-compose-sqlkit-enterprise.yml up -d  # needs registry login first
 # Other stacks (examples)
 docker compose -f docker-compose-latest.yml up -d
 docker compose -f docker-compose-mongo.yml up -d
@@ -103,6 +98,7 @@ docker compose -f docker-compose-mongo.yml up -d
 **Stop a single stack:**
 ```bash
 docker compose -f docker-compose-sqlkit-core.yml down
+docker compose -f docker-compose-sqlkit-enterprise.yml down
 ```
 
 **Start all stacks (parallel):**
@@ -116,6 +112,7 @@ docker compose -f docker-compose-sqlkit-core.yml up -d && \
 docker compose -f docker-compose-sqlkit-pgext.yml up -d && \
 docker compose -f docker-compose-sqlkit-xc.yml up -d && \
 docker compose -f docker-compose-sqlkit-analytics.yml up -d && \
+docker compose -f docker-compose-sqlkit-enterprise.yml up -d && \
 docker compose -f docker-compose-mongo.yml up -d
 ```
 
@@ -130,6 +127,7 @@ docker compose -f docker-compose-sqlkit-core.yml down && \
 docker compose -f docker-compose-sqlkit-pgext.yml down && \
 docker compose -f docker-compose-sqlkit-xc.yml down && \
 docker compose -f docker-compose-sqlkit-analytics.yml down && \
+docker compose -f docker-compose-sqlkit-enterprise.yml down && \
 docker compose -f docker-compose-mongo.yml down
 ```
 
@@ -144,6 +142,7 @@ docker compose -f docker-compose-sqlkit-core.yml down -v && \
 docker compose -f docker-compose-sqlkit-pgext.yml down -v && \
 docker compose -f docker-compose-sqlkit-xc.yml down -v && \
 docker compose -f docker-compose-sqlkit-analytics.yml down -v && \
+docker compose -f docker-compose-sqlkit-enterprise.yml down -v && \
 docker compose -f docker-compose-mongo.yml down -v
 ```
 
@@ -271,9 +270,7 @@ open http://localhost:5630
 
 ### SQLKit Core Stack (`docker-compose-sqlkit-core.yml`)
 
-Multi-dialect SQL database testing stack. Covers PG wire, MySQL, T-SQL, HTTP/columnar, PL/SQL, embedded Java DB, and Db2.
-
-First-time users: complete the registry login steps in [First-Time Setup](#first-time-setup) above before running `up -d`, otherwise Oracle & Db2 will fail to pull.
+Multi-dialect SQL database testing stack. Zero-config — `docker compose up -d` and everything works. Covers PG wire, MySQL, T-SQL, HTTP/columnar, and embedded Java DB.
 
 **Services & Ports:**
 | Service | Version | Port | Wire Protocol | Credentials |
@@ -285,11 +282,9 @@ First-time users: complete the registry login steps in [First-Time Setup](#first
 | SQL Server | 2022 | 1433 | T-SQL | user: `sa`, pass: `$SA_PASSWORD`, db: `master` |
 | CockroachDB | 24.1 | 26257 | PG wire | no auth (insecure), UI: `http://localhost:18080` |
 | ClickHouse | latest | 8123 (HTTP) / 19000 (native) | HTTP/columnar | user: `sqlkit`, pass: `$CLICKHOUSE_PASSWORD`, db: `sqlkit` |
-| Oracle XE | 21c | 1521 | PL/SQL | user: `system`, pass: `$ORACLE_PASSWORD`, SID: `XE` |
-| Db2 | latest | 50000 | DB2 SQL | user: `db2inst1`, pass: `$DB2_PASSWORD` |
 | H2 | latest | 18082 (web) / 19092 (tcp) | Java SQL | user: `sa`, pass: (blank) |
 
-**Total Memory:** ~5 GB active (~3 GB without Oracle).
+**Total Memory:** ~3 GB active.
 
 **Quick Test:**
 ```bash
@@ -313,12 +308,6 @@ curl -u sqlkit:"${CLICKHOUSE_PASSWORD}" http://localhost:8123?query=SELECT+1
 
 # MariaDB
 docker exec sqlkit-mariadb-11 mysql -u sqlkit -p"${MARIADB_PASSWORD}" -e 'SELECT 1'
-
-# Oracle (wait 2-5 min for init)
-docker exec sqlkit-oracle sqlplus system/"${ORACLE_PASSWORD}"@XE <<< 'SELECT 1 FROM dual;'
-
-# Db2 (wait 3-5 min for init)
-docker exec sqlkit-db2 su - db2inst1 -c 'db2 "SELECT 1 FROM sysibm.sysdummy1"'
 
 # H2 Console
 open http://localhost:18082
@@ -409,6 +398,40 @@ curl -X POST http://localhost:8088/v1/statement -d 'SELECT 1'
 # Presto
 curl -X POST http://localhost:8089/v1/statement -d 'SELECT 1'
 ```
+
+---
+
+### SQLKit Enterprise Stack (`docker-compose-sqlkit-enterprise.yml`)
+
+Databases requiring registry login and license acceptance. Not included in the zero-config core stack.
+
+**Prerequisites (one-time):**
+```bash
+# ── Oracle XE (auth changed June 2025 — use Auth Token, not SSO password) ──
+# 1. Go to https://container-registry.oracle.com → login → Auth Token (generate)
+docker login container-registry.oracle.com                    # password = auth token
+# 2. On website: browse to database/express → accept license
+docker pull container-registry.oracle.com/database/express:21.3.0-xe
+
+# ── IBM Db2 ──
+docker login icr.io
+docker pull icr.io/db2_community:latest
+```
+
+| Service | Version | Port | Credentials | Notes |
+|---------|---------|------|-------------|-------|
+| Oracle XE | 21.3.0 | 1521 | user: `system`, pass: `$ORACLE_PASSWORD`, SID: `XE` | PL/SQL, 2-5 min init |
+| Db2 | latest | 50000 | user: `db2inst1`, pass: `$DB2_PASSWORD` | DB2 SQL, 3-5 min init |
+
+**Quick Test:**
+```bash
+# Oracle
+docker exec sqlkit-oracle sqlplus system/"${ORACLE_PASSWORD}"@XE <<< 'SELECT 1 FROM dual;'
+
+# Db2
+docker exec sqlkit-db2 su - db2inst1 -c 'db2 "SELECT 1 FROM sysibm.sysdummy1"'
+```
+
 ---
 
 ### MongoDB Stack (`docker-compose-mongo.yml`)
