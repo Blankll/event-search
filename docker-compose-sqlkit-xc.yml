@@ -15,6 +15,7 @@ services:
   oceanbase:
     image: oceanbase/oceanbase-ce:latest
     container_name: sqlkit-oceanbase
+    privileged: true
     environment:
       MODE: mini
       OB_TENANT_PASSWORD: ${OCEANBASE_PASSWORD:-ocean#pass1}
@@ -23,6 +24,21 @@ services:
       - '2881:2881'
     networks:
       - sqlkit-xc-net
+    sysctls:
+      - fs.aio-max-nr=1048576
+      - vm.max_map_count=655360
+      - vm.overcommit_memory=0
+      - fs.file-max=6573688
+    ulimits:
+      nofile:
+        soft: 6573688
+        hard: 6573688
+      stack:
+        soft: -1
+        hard: -1
+      core:
+        soft: -1
+        hard: -1
     # Takes 2-5 min to init. Check: docker logs sqlkit-oceanbase | tail -1
     # Should see "boot success!" when ready.
     # Connect: mysql -h 127.0.0.1 -P 2881 -u root@test -p'${OCEANBASE_PASSWORD}'
