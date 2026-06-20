@@ -140,14 +140,24 @@ services:
     image: lhrbest/gbase8c_1:latest
     container_name: sqlkit-gbase8c
     privileged: true
+    restart: unless-stopped
     ports:
       - '5437:5432'
     networks:
       - sqlkit-xc-net
-    # PG-wire compatible. Default user: gbase
-    # Needs systemd inside container. After first start:
-    #   docker exec sqlkit-gbase8c systemctl start etcd.service
-    #   docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
+    # PG-wire compatible. Default user: gbase / password: Gbase@123
+    #
+    # ⚠️ Container does NOT auto-start the database. After first start:
+    #
+    #   Automatic (recommended — one-time setup enables auto-start on reboot):
+    #     ./scripts/init-gbase8c.sh --enable-autostart
+    #
+    #   Manual:
+    #     docker exec sqlkit-gbase8c systemctl start etcd.service
+    #     docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
+    #
+    #   Status check:
+    #     ./scripts/init-gbase8c.sh --status
 
   # ── GoldenDB (中兴 信创 MySQL-compatible distributed) ──────────
   # No public single-container Docker image available.
