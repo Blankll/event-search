@@ -110,8 +110,65 @@ services:
   # No Docker image available — requires multi-node ansible deployment.
   # Testing requires a cloud instance or dedicated environment.
 
+  # ── KingbaseES (人大金仓 信创 PG-based) ─────────────────────────
+  kingbasees:
+    image: wephoon/kingbase:latest
+    container_name: sqlkit-kingbasees
+    privileged: true
+    environment:
+      SYSTEM_PASSWORD: ${KINGBASEES_PASSWORD:-kingbase@123}
+    ports:
+      - '54321:54321'
+    volumes:
+      - kingbasees_data:/data
+    networks:
+      - sqlkit-xc-net
+    # Default user: SYSTEM / pass: kingbase@123 / port: 54321
+    # Supports x86_64 and arm64/v8. Community image — not official.
+    # No healthcheck — systemd-based container.
+
+  # ── YashanDB (崖山 信创 proprietary) ────────────────────────────
+  yashandb:
+    image: wdmcheng/yashandb:23.4.4.100
+    container_name: sqlkit-yashandb
+    environment:
+      SYS_PASSWD: ${YASHANDB_PASSWORD:-Yasdb@123}
+    ports:
+      - '1688:1688'
+    volumes:
+      - yashandb_data:/data/yashan
+    networks:
+      - sqlkit-xc-net
+    # Default user: sys / pass: Yasdb@123 / port: 1688
+    # Start takes ~1 min. Check: docker logs sqlkit-yashandb
+    # Should see "DeployYasdbCluster task status: SUCCESS" when ready.
+
+  # ── GBase 8c (南大通用 信创 PG-based distributed) ──────────────
+  gbase8c:
+    image: lhrbest/gbase8c_1:latest
+    container_name: sqlkit-gbase8c
+    privileged: true
+    ports:
+      - '5437:5432'
+    networks:
+      - sqlkit-xc-net
+    # PG-wire compatible. Default user: gbase
+    # Needs systemd inside container. After first start:
+    #   docker exec sqlkit-gbase8c systemctl start etcd.service
+    #   docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
+
+  # ── GoldenDB (中兴 信创 MySQL-compatible distributed) ──────────
+  # No public single-container Docker image available.
+  # GoldenDB is based on MySQL 8.0 kernel, MySQL-wire compatible.
+  # Requires multi-node deployment with CN/DN/GTM/LDS containers.
+  # For protocol compatibility testing, MySQL 8.0 in sqlkit-core
+  # covers the MySQL-wire protocol (GoldenDB's wire is identical).
+  # Cloud/ production testing requires dedicated environment.
+
 volumes:
   dm8_data:
+  kingbasees_data:
+  yashandb_data:
 
 networks:
   sqlkit-xc-net:

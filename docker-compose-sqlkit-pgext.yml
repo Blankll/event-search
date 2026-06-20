@@ -85,27 +85,6 @@ services:
     # Default user: highgo / pass: Highgo@12345
     # Password must be 8+ chars with upper, lower, digit, and special
 
-  # ── KingbaseES (人大金仓 信创 PG-based) ─────────────────────────
-  # kingbasees:
-  #   image: kingbase:v1
-  #   container_name: sqlkit-kingbasees
-  #   privileged: true
-  #   environment:
-  #     DB_USER: sqlkit
-  #     DB_PASSWORD: ${KINGBASEES_PASSWORD:-kingbase@123}
-  #     DB_MODE: oracle
-  #     NEED_START: yes
-  #   ports:
-  #     - '54321:54321'
-  #   volumes:
-  #     - kingbasees_data:/home/kingbase/userdata
-  #   networks:
-  #     - sqlkit-pgext-net
-  #   # Manual setup required:
-  #   #   1. Download KingbaseES from https://en.kingbase.com.cn/Download.html
-  #   #   2. docker load -i kingbase.tar
-  #   # Default user: system / pass: 12345678ab
-
   # ── GaussDB (华为 信创 PG-based) ───────────────────────────────
   # gaussdb:
   #   image: enmotech/gaussdb:latest
@@ -119,21 +98,6 @@ services:
   #     - sqlkit-pgext-net
   #   # Community image at docker.io/enmotech/gaussdb. May need specific tags.
 
-  # ── GBase 8c (南大通用 信创 PG-based) ───────────────────────────
-  # gbase8c:
-  #   image: lhrbest/gbase8c:8cV5_S3.0.0B76_1.0
-  #   container_name: sqlkit-gbase8c
-  #   privileged: true
-  #   environment:
-  #     GS_PASSWORD: ${GBASE8C_PASSWORD:-Gbase@123}
-  #   ports:
-  #     - '5437:5432'
-  #   networks:
-  #     - sqlkit-pgext-net
-  #   # Requires systemd inside container. After start:
-  #   #   docker exec sqlkit-gbase8c systemctl start etcd.service
-  #   #   docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
-
   # ── UXDB (优炫 信创) ───────────────────────────────────────────
   # No public Docker image available. Download from https://uxdb.net.cn/download
   # and build custom image.
@@ -141,7 +105,6 @@ services:
 volumes:
   timescale_data:
   highgo_data:
-  # kingbasees_data:
 
 networks:
   sqlkit-pgext-net:

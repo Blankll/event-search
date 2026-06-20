@@ -32,7 +32,7 @@ Eleven separate compose files for different database stacks:
 | **OS Production Cluster** | `opensearch-cluster-production.yml` | 11-node OS + MinIO (Reader/Writer separation) | ~10 GB |
 | **SQLKit Core** | `docker-compose-sqlkit-core.yml` | PostgreSQL, MySQL 8.0, MariaDB, SQL Server, TiDB, CockroachDB, ClickHouse, H2 | ~3 GB |
 | **SQLKit PG Ext** | `docker-compose-sqlkit-pgext.yml` | YugabyteDB, TimescaleDB, OpenGauss, HighGo (+ commented: KingbaseES, GaussDB) | ~2 GB |
-| **SQLKit 信创** | `docker-compose-sqlkit-xc.yml` | OceanBase, GBase 8a, XuguDB (+ commented: PolarDB-X, DM8) | ~3 GB |
+| **SQLKit 信创** | `docker-compose-sqlkit-xc.yml` | OceanBase, GBase 8a, XuguDB, KingbaseES, YashanDB, GBase 8c (+ commented: PolarDB-X, DM8, TDSQL, GoldenDB) | ~5 GB |
 | **SQLKit Analytics** | `docker-compose-sqlkit-analytics.yml` | Trino, Presto | ~1 GB |
 | **SQLKit Enterprise** | `docker-compose-sqlkit-enterprise.yml` | Oracle XE, Db2 | ~3 GB |
 | **MongoDB** | `docker-compose-mongo.yml` | MongoDB 4/5/6/7/8 + Mongo Express | ~3 GB |
@@ -66,6 +66,8 @@ cp .env.example .env
 - `HIGHGO_PASSWORD` - HighGo password
 - `OCEANBASE_PASSWORD` - OceanBase tenant password
 - `OCEANBASE_SYS_PASSWORD` - OceanBase sys password
+- `KINGBASEES_PASSWORD` - KingbaseES password
+- `YASHANDB_PASSWORD` - YashanDB sys password
 - `ORACLE_PASSWORD` - Oracle password
 - `DB2_PASSWORD` - Db2 password
 - `MONGO_EXPRESS_PASSWORD` - Mongo Express web UI password
@@ -329,10 +331,10 @@ PG-wire compatible databases. Some (OpenGauss, HighGo) are 信创 domestic.
 | HighGo | 6.0.1 | 5866 | user: `highgo`, pass: `$HIGHGO_PASSWORD` | 信创 PG-based, needs `privileged` |
 
 **Commented services** (require manual setup — see compose file):
-- **KingbaseES** — download tar from kingbase.com.cn, `docker load`
 - **GaussDB** — community image at docker.io/enmotech/gaussdb
-- **GBase 8c** — needs systemd + multi-step init inside container
 - **UXDB** — no public Docker image
+
+**Moved to `docker-compose-sqlkit-xc.yml`**: KingbaseES, GBase 8c
 
 **Quick Test:**
 ```bash
@@ -358,13 +360,17 @@ Chinese domestic databases (信创). TiDB is in `sqlkit-core` since it's the mos
 | Service | Version | Port | Credentials | Notes |
 |---------|---------|------|-------------|-------|
 | OceanBase | latest | 2881 | user: `root@test`, pass: `$OCEANBASE_PASSWORD` | MySQL-compat, 2-5 min init |
-| GBase 8a | 1.0 | 5258 | user: `root`, pass: `root`, db: `gbase` | MPP analytical |
-| XuguDB | 12.9 | 5138 | user: `SYSDBA`, db: `SYSTEM` | Proprietary |
+| GBase 8a | 1.0 | 5258 | user: `root`, pass: `root`, db: `gbase` | MPP analytical, JDBC |
+| XuguDB | 12.9 | 5138 | user: `SYSDBA`, db: `SYSTEM` | Proprietary, JDBC |
+| KingbaseES | v8r3 | 54321 | user: `SYSTEM`, pass: `$KINGBASEES_PASSWORD` | 人大金仓, PG-based, community image |
+| YashanDB | 23.4.4 | 1688 | user: `sys`, pass: `$YASHANDB_PASSWORD` | 崖山, proprietary, ~1 min init |
+| GBase 8c | latest | 5437 | user: `gbase` | 南大通用, PG-based distributed, needs systemd |
 
 **Commented services** (require manual setup):
 - **PolarDB-X** — needs 12GB+ RAM. Image: `polardbx/polardb-x`
 - **DM8** — download tar from eco.dameng.com, `docker load`
 - **TDSQL** — no Docker image, requires multi-node ansible deployment
+- **GoldenDB** — no public single-container image, multi-node distributed deployment
 
 **Quick Test:**
 ```bash
@@ -377,6 +383,17 @@ mysql -h 127.0.0.1 -P 2881 -u root@test -p"${OCEANBASE_PASSWORD}" -e 'SELECT 1'
 
 # XuguDB
 # Use JDBC: jdbc:xugu://localhost:5138/SYSTEM
+
+# KingbaseES
+docker exec sqlkit-kingbasees psql -U SYSTEM -d postgres -c 'SELECT 1'
+
+# YashanDB
+# docker logs sqlkit-yashandb  # wait for "...task status: SUCCESS"
+docker exec sqlkit-yashandb yasql sys/"${YASHANDB_PASSWORD}"@127.0.0.1:1688 -c 'SELECT 1'
+
+# GBase 8c (needs manual systemd init first)
+# docker exec sqlkit-gbase8c systemctl start etcd.service
+# docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
 ```
 
 ---
