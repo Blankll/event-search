@@ -33,14 +33,8 @@ services:
       - sqlkit-xc-net
     ulimits:
       nofile:
-        soft: 6573688
-        hard: 6573688
-      stack:
-        soft: -1
-        hard: -1
-      core:
-        soft: -1
-        hard: -1
+        soft: 65536
+        hard: 65536
     # Takes 2-5 min to init. Check: docker logs sqlkit-oceanbase | tail -1
     # Should see "boot success!" when ready.
     # Connect: mysql -h 127.0.0.1 -P 2881 -u root@test -p'${OCEANBASE_PASSWORD}'
@@ -121,8 +115,6 @@ services:
       SYSTEM_PASSWORD: ${KINGBASEES_PASSWORD:-kingbase@123}
     ports:
       - '54321:54321'
-    volumes:
-      - kingbasees_data:/data
     networks:
       - sqlkit-xc-net
     # Default user: SYSTEM / pass: kingbase@123 / port: 54321
@@ -137,8 +129,6 @@ services:
       SYS_PASSWD: ${YASHANDB_PASSWORD:-Yasdb@123}
     ports:
       - '1688:1688'
-    volumes:
-      - yashandb_data:/data/yashan
     networks:
       - sqlkit-xc-net
     # Default user: sys / pass: Yasdb@123 / port: 1688
@@ -169,8 +159,6 @@ services:
 
 volumes:
   dm8_data:
-  kingbasees_data:
-  yashandb_data:
 
 networks:
   sqlkit-xc-net:
