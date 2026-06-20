@@ -7,6 +7,13 @@
 # Stop:   docker compose -f docker-compose-sqlkit-xc.yml down
 # Reset:  docker compose -f docker-compose-sqlkit-xc.yml down -v
 # Note: OceanBase takes 2-5 minutes to initialize.
+#
+# Host setup (one-time, for OceanBase/GBase 8c on Linux or Docker Desktop VM):
+#   docker run --privileged --pid=host alpine sh -c \
+#     'sysctl -w vm.max_map_count=655360
+#      sysctl -w vm.overcommit_memory=0
+#      sysctl -w fs.file-max=6573688
+#      sysctl -w fs.aio-max-nr=1048576'
 
 name: sqlkit-xc
 
@@ -24,11 +31,6 @@ services:
       - '2881:2881'
     networks:
       - sqlkit-xc-net
-    sysctls:
-      - fs.aio-max-nr=1048576
-      - vm.max_map_count=655360
-      - vm.overcommit_memory=0
-      - fs.file-max=6573688
     ulimits:
       nofile:
         soft: 6573688
