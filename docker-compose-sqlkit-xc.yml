@@ -6,9 +6,19 @@
 # Start:  docker compose -f docker-compose-sqlkit-xc.yml up -d
 # Stop:   docker compose -f docker-compose-sqlkit-xc.yml down
 # Reset:  docker compose -f docker-compose-sqlkit-xc.yml down -v
-# Note: OceanBase takes 2-5 minutes to initialize.
 #
-# Host setup (one-time, for OceanBase/GBase 8c on Linux or Docker Desktop VM):
+# ╔═══════════════════════════════════════════════════════════════╗
+# ║  Component      Status     Port    User           Password   ║
+# ╠═══════════════════════════════════════════════════════════════╣
+# ║  GBase 8a       ✅ ready   5258    root           root       ║
+# ║  XuguDB         ✅ ready   5138    SYSDBA         (none)     ║
+# ║  YashanDB       ✅ ready   1688    sys            Yasdb@123  ║
+# ║  KingbaseES     ✅ ready   54321   SYSTEM         kingbase@123║
+# ║  GBase 8c       ⚠️ manual  5437    gbase          Gbase@123  ║
+# ║  OceanBase      ❌ n/a     2881    -              -          ║
+# ╚═══════════════════════════════════════════════════════════════╝
+#
+# Host setup (one-time, for GBase 8c on Linux or Docker Desktop VM):
 #   docker run --privileged --pid=host alpine sh -c \
 #     'sysctl -w vm.max_map_count=655360
 #      sysctl -w vm.overcommit_memory=0
@@ -19,31 +29,30 @@ name: sqlkit-xc
 
 services:
   # ── OceanBase (蚂蚁集团 信创 MySQL-compatible) ──────────────────
-  oceanbase:
-    image: oceanbase/oceanbase-ce:latest
-    container_name: sqlkit-oceanbase
-    privileged: true
-    environment:
-      MODE: mini
-      OB_TENANT_PASSWORD: ${OCEANBASE_PASSWORD:-ocean#pass1}
-      OB_SYS_PASSWORD: ${OCEANBASE_SYS_PASSWORD:-sys@pass1}
-    ports:
-      - '2881:2881'
-    networks:
-      - sqlkit-xc-net
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    # Takes 2-5 min to init. Check: docker logs sqlkit-oceanbase | tail -1
-    # Should see "boot success!" when ready.
-    # Connect: mysql -h 127.0.0.1 -P 2881 -u root@test -p'${OCEANBASE_PASSWORD}'
-    healthcheck:
-      test: ["CMD-SHELL", "grep -q 'boot success' /home/admin/oceanbase/log/observer.log 2>/dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 20
-      start_period: 120s
+  # ⚠️ DISABLED: RDTSCP instruction not available in Docker Desktop for macOS.
+  #   The observer binary uses RDTSCP at startup (SIGILL on LinuxKit VM).
+  #   Re-enable on a Linux host or with Colima (QEMU with --cpu-type host).
+  # oceanbase:
+  #   image: oceanbase/oceanbase-ce:4.2.1-lts
+  #   container_name: sqlkit-oceanbase
+  #   privileged: true
+  #   environment:
+  #     MODE: mini
+  #     EXIT_WHILE_ERROR: ${EXIT_WHILE_ERROR:-true}
+  #     OB_MEMORY_LIMIT: ${OB_MEMORY_LIMIT:-4G}
+  #     OB_SYSTEM_MEMORY: ${OB_SYSTEM_MEMORY:-1G}
+  #     OB_DATAFILE_SIZE: ${OB_DATAFILE_SIZE:-2G}
+  #     OB_LOG_DISK_SIZE: ${OB_LOG_DISK_SIZE:-2G}
+  #     OB_TENANT_PASSWORD: ${OCEANBASE_PASSWORD:-ocean#pass1}
+  #     OB_SYS_PASSWORD: ${OCEANBASE_SYS_PASSWORD:-sys@pass1}
+  #   ports:
+  #     - '2881:2881'
+  #   networks:
+  #     - sqlkit-xc-net
+  #   ulimits:
+  #     nofile:
+  #       soft: 65536
+  #       hard: 65536
 
   # ── GBase 8a (南大通用 信创 MPP analytical) ────────────────────
   gbase8a:
@@ -110,7 +119,17 @@ services:
   kingbasees:
     image: wephoon/kingbase:latest
     container_name: sqlkit-kingbasees
+    # ⚠️ Workaround: entrypoint uses "sys_ctl restart" which fails on first start
+    # because /data/kingbase.opts doesn't exist yet. We patch restart→start, then
+    # switch to the kingbase user to run the original entrypoint.
     privileged: true
+    user: root
+    entrypoint: bash
+    command: >
+      -c '
+      sed -i "s| restart$| start|" /opt/kingbase/docker-entrypoint.sh &&
+      exec su kingbase -c /opt/kingbase/docker-entrypoint.sh
+      '
     environment:
       SYSTEM_PASSWORD: ${KINGBASEES_PASSWORD:-kingbase@123}
     ports:
@@ -119,7 +138,6 @@ services:
       - sqlkit-xc-net
     # Default user: SYSTEM / pass: kingbase@123 / port: 54321
     # Supports x86_64 and arm64/v8. Community image — not official.
-    # No healthcheck — systemd-based container.
 
   # ── YashanDB (崖山 信创 proprietary) ────────────────────────────
   yashandb:
@@ -147,12 +165,16 @@ services:
       - sqlkit-xc-net
     # PG-wire compatible. Default user: gbase / password: Gbase@123
     #
-    # ⚠️ Container does NOT auto-start the database. After first start:
+    # ⚠️ Container does NOT auto-start the database. On Docker Desktop for macOS,
+    # systemd may not work (no D-Bus). Start etcd directly instead:
     #
-    #   Automatic (recommended — one-time setup enables auto-start on reboot):
-    #     ./scripts/init-gbase8c.sh --enable-autostart
+    #   1. Start etcd:
+    #      docker exec sqlkit-gbase8c bash -c 'mkdir -p /run/dbus && /usr/bin/dbus-daemon --system && nohup etcd --name etcd0 --advertise-client-urls http://127.0.0.1:2379 --listen-client-urls http://0.0.0.0:2379 --listen-peer-urls http://0.0.0.0:2380 --initial-advertise-peer-urls http://127.0.0.1:2380 --initial-cluster etcd0=http://127.0.0.1:2380 &'
     #
-    #   Manual:
+    #   2. Start GBase 8c cluster (if pre-deployed):
+    #      docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
+    #
+    #   On Linux with systemd:
     #     docker exec sqlkit-gbase8c systemctl start etcd.service
     #     docker exec sqlkit-gbase8c su - gbase -c "gha_ctl start all -l http://127.0.0.1:2379"
     #
